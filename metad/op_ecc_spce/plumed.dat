@@ -1,0 +1,31 @@
+# Plumed file for Metadynamics
+
+mg: GROUP NDX_FILE=index.ndx NDX_GROUP=MG
+op: GROUP NDX_FILE=index.ndx NDX_GROUP=O_Phosphate
+ob: GROUP NDX_FILE=index.ndx NDX_GROUP=O_Base
+ow: GROUP NDX_FILE=index.ndx NDX_GROUP=O_Water
+
+_nop: COORDINATION ...
+   GROUPA=mg
+   GROUPB=op
+   SWITCH={COSINUS R_0=0.24 D_0=0.18}
+...
+
+_now: COORDINATION ...
+   GROUPA=mg
+   GROUPB=ow
+   SWITCH={COSINUS R_0=0.24 D_0=0.18}
+...
+
+nop: COMBINE ARG=_nop COEFFICIENTS=1.039661 PERIODIC=NO
+now: COMBINE ARG=_now COEFFICIENTS=1.039661 PERIODIC=NO
+
+lwall: LOWER_WALLS ARG=now AT=4 KAPPA=500
+uwall: UPPER_WALLS ARG=now AT=7 KAPPA=500
+
+metad: METAD ...
+   ARG=nop,now
+   SIGMA=0.05,0.05 HEIGHT=1.0 PACE=500 TEMP=300 BIASFACTOR=15 
+...
+
+PRINT ARG=nop,now,lwall.bias,uwall.bias,metad.bias STRIDE=500 FILE=COLVAR

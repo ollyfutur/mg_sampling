@@ -1,0 +1,28 @@
+argcomplete==3.5.3
+bussilab==0.0.45
+contourpy==1.3.1
+cycler==0.12.1
+fonttools==4.55.3
+kiwisolver==1.4.8
+llvmlite==0.43.0
+matplotlib==3.10.0
+# Editable install with no version control (mg_sampling==2025.0)
+-e /leonardo_work/EUHPC_R02_136/Olivier/mg_sampling
+networkx==3.4.2
+numba==0.60.0
+numpy==2.0.2
+OpenMM==8.2.0
+packaging==24.2
+pandas==2.2.3
+pdbfixer @ git+https://github.com/openmm/pdbfixer.git@29fcf15f95f19f92211283fefdd0a086da37d646
+pillow==11.1.0
+pyparsing==3.2.1
+python-dateutil==2.9.0.post0
+pytz==2024.2
+PyYAML==6.0.2
+SciencePlots==2.1.1
+scipy==1.15.0
+six==1.17.0
+slack_sdk==3.34.0
+typing_extensions==4.12.2
+tzdata==2024.2

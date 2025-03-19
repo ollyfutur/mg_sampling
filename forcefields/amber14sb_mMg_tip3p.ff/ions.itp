@@ -1,0 +1,66 @@
+;Ions from Mamatkulov and Schwierz 2018 + microMg
+;We chose to keep usual molecule names for consistent input files when comparing forcefields
+
+[ moleculetype ]
+; Name            nrexcl
+CL                1
+[ atoms ]
+; id    at type         res nr  residu name     at name  cg nr  charge
+1       CXY             1       CL              CL       1      -1
+
+[ moleculetype ]
+; Name            nrexcl
+LI                1
+[ atoms ]
+; id    at type         res nr  residu name     at name  cg nr  charge
+1       LIO             1       LI              LI       1      1
+
+[ moleculetype ]
+; Name            nrexcl
+NA                1
+[ atoms ]
+; id    at type         res nr  residu name     at name  cg nr  charge
+1       NIO             1       NA              NA       1      1
+
+[ moleculetype ]
+; Name            nrexcl
+K                 1
+[ atoms ]
+; id    at type         res nr  residu name     at name  cg nr  charge
+1       KIO             1       K               K        1      1
+
+[ moleculetype ]
+; Name            nrexcl
+CS                1
+[ atoms ]
+; id    at type         res nr  residu name     at name  cg nr  charge
+1       CIO             1       CS              CS       1      1 
+
+[ moleculetype ]
+; Name            nrexcl
+MG                1
+[ atoms ]
+; id    at type         res nr  residu name     at name  cg nr  charge
+1       mMg             1       MG              MG      1      2
+
+[ moleculetype ]
+; Name            nrexcl
+CA                1
+[ atoms ]
+; id    at type         res nr  residu name     at name  cg nr  charge
+1       Ca2             1       CA              CA       1      2
+
+[ moleculetype ]
+; Name            nrexcl
+SR                1
+[ atoms ]
+; id    at type         res nr  residu name     at name  cg nr  charge
+1       Sr2             1       SR              SR       1      2
+
+[ moleculetype ]
+; Name            nrexcl
+BA                1
+[ atoms ]
+; id    at type         res nr  residu name     at name  cg nr  charge
+1       Ba2             1       BA              BA       1      2
+

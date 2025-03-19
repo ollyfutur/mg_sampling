@@ -1,0 +1,42 @@
+
+LOAD FILE=/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/ligandexchange/LigandExchange.so
+
+rmsd: RMSD REFERENCE=../ref_subset.pdb TYPE=SIMPLE
+
+mg: GROUP NDX_FILE=../index.ndx NDX_GROUP=MG
+op: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Phosphate
+ob: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Base
+ox: GROUP ATOMS=op,ob
+ow: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Water
+
+cv: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=ox
+   GROUPC=ow
+   SWITCH={COSINUS R_0=0.24 D_0=0.18}
+   VAR=_nox,_now
+   FUNC=-14.090794*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.06997*(1-cos(x*pi));Y=y-0.049382*(1-cos(x*pi));x=1.039661*_nox-1.039661*_now+6;y=1.039661*_nox+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.0
+   NL_CUTOFF_AC=1.0
+   NL_STRIDE=500
+   NESTED
+...
+
+#####################################################################
+### Biases ##########################################################
+#####################################################################
+
+restr: RESTRAINT ARG=rmsd AT=0 KAPPA=500
+
+scaledcv: COMBINE ARG=cv COEFFICIENTS=@replicas:{0.000000000000000000e+00,4.483103216581529327e-01,6.009761777652656844e-01,7.083648463812513008e-01,7.645656919043677391e-01,8.117481641058766906e-01,8.506419481729330379e-01,8.902379218456407672e-01,9.202716909775671139e-01,9.436700196919527439e-01,9.748246108312381697e-01,1.000000000000000000e+00} PERIODIC=NO
+
+bias: BIASVALUE ARG=scaledcv
+
+#####################################################################
+### Output ##########################################################
+#####################################################################
+
+PRINT ARG=rmsd,restr.bias STRIDE=5000 FILE=rmsd.COLVAR
+PRINT ARG=cv,bias.bias STRIDE=5000 FILE=bias.COLVAR
+

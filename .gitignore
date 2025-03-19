@@ -1,0 +1,32 @@
+ligandexchange/
+
+# Hidden files
+.*
+!.gitignore
+
+# Python stuff
+.venv/
+__pycache__/
+*.egg-info
+
+# Data files and outputs
+*.cpt
+*.csv
+fes.dat
+*.edr
+*.gro
+*.log
+mdout.mdp
+*.ndx
+*.out
+*.pdb
+*.pdf
+processed.top
+*.tpr
+*.trr
+*.xtc
+*.xvg
+*.wsv
+*COLVAR*
+*HILLS*
+\#*\#

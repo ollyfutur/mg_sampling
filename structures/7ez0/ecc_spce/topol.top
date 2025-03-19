@@ -1,0 +1,57 @@
+;
+;	File 'topol.top' was generated
+;	By user: olanguin (127511)
+;	On host: login05.leonardo.local
+;	At date: Tue Feb 18 11:57:49 2025
+;
+;	This is a standalone topology file
+;
+;	Created by:
+;	              :-) GROMACS - gmx pdb2gmx, 2023.5-plumed_2.10b (-:
+;	
+;	Executable:   /leonardo/pub/userexternal/olanguin/install/gromacs-2023.5-plumed-2.10b/bin/gmx_mpi
+;	Data prefix:  /leonardo/pub/userexternal/olanguin/install/gromacs-2023.5-plumed-2.10b
+;	Working dir:  /leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/structures/7ez0/ecc_spce
+;	Command line:
+;	  gmx_mpi pdb2gmx -f 7ez0_fixed.pdb -ff amber14sb_OL15_O8scaled_v2 -water spce -noh
+;	Force field data was read from:
+;	/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/forcefields
+;
+;	Note:
+;	This might be a non-standard force field location. When you use this topology, the
+;	force field must either be present in the current directory, or the location
+;	specified in the GMXLIB path variable or with the 'include' mdp file option.
+;
+
+; Include forcefield parameters
+#include "/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/forcefields/amber14sb_OL15_O8scaled_v2.ff/forcefield.itp"
+
+; Include chain topologies
+#include "topol_RNA_chain_N.itp"
+#include "topol_Ion_chain_N2.itp"
+
+; Include water topology
+#include "/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/forcefields/amber14sb_OL15_O8scaled_v2.ff/spce.itp"
+
+#ifdef POSRES_WATER
+; Position restraint for each water oxygen
+[ position_restraints ]
+;  i funct       fcx        fcy        fcz
+   1    1       1000       1000       1000
+#endif
+
+; Include topology for ions
+#include "/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/forcefields/amber14sb_OL15_O8scaled_v2.ff/ions.itp"
+
+[ system ]
+; Name
+Protein in water
+
+[ molecules ]
+; Compound        #mols
+RNA_chain_N         1
+Ion_chain_N2        1
+SOL         85730
+NA_js            121
+MG_s3            151
+CL_js            91

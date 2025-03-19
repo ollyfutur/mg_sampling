@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mg_sampling"
+version = "2025.0"
+dependencies = [
+  "numpy",
+  "scipy",
+  "pandas",
+  "matplotlib",
+  "scienceplots",
+  "seaborn",
+  "MDAnalysis",
+  "dask",
+  "bussilab",
+  "pdbfixer @ git+https://github.com/openmm/pdbfixer.git@29fcf15f95f19f92211283fefdd0a086da37d646",
+  "nbconvert",
+]
+requires-python = ">=3.11"
+authors = [
+  {name = "Olivier Languin-Cattoën", email = "olanguin@sissa.it"},
+]
+maintainers = [
+  {name = "Olivier Languin-Cattoën", email = "olanguin@sissa.it"},
+]
+description = "Python code for enhanced Mg-RNA dynamics project"
+
+[project.scripts]
+read_exchanges = "mg_sampling.read_exchanges:main"
+optimize_scalings = "mg_sampling.optimize_scalings:main"
+ion_motif_analysis = "mg_sampling.ion_motif_analysis:main"
