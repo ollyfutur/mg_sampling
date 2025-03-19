@@ -24,7 +24,7 @@ def main():
     parser.add_argument('--start', type=int, default=0, help="(0) Starting frame")
     parser.add_argument('--stop', type=int, default=None, help="(None) Ending frame")
     parser.add_argument('--step', type=int, default=1, help="(1) Subsample every N frame")
-    parser.add_argument('-n', '--n_workers', type=int, default=1, help="(1) Number of parallel processes")
+    parser.add_argument('-n', '--n_workers', type=int, default=None, help="(None) Number of parallel processes")
 
     args = parser.parse_args()
     if args.outer_cutoff <= 0:
