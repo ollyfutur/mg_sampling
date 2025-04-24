@@ -3,7 +3,6 @@
 import argparse
 import numpy as np
 
-from mg_sampling import PROJECT_DIR
 from mg_sampling.analysis import IonNucleicAnalysis
 import MDAnalysis as mda
 
@@ -31,7 +30,7 @@ def main():
         args.outer_cutoff = None
 
     u = mda.Universe(args.topfile, args.trajfiles)
-    anal = IonNucleicAnalysis(u, args.sel, args.inner_cutoff, ligsel=args.ligsel, outer_cutoff=args.outer_cutoff)
+    anal = IonNucleicAnalysis(u, ionsel=args.sel, inner_cutoff=args.inner_cutoff, ligsel=args.ligsel, outer_cutoff=args.outer_cutoff)
     print(f"Running analysis with {args.n_workers} processes...")
     anal.run(start=args.start, stop=args.stop, step=args.step, backend='dask', n_workers=args.n_workers)
     df = anal.to_pandas()

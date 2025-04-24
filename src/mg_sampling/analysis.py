@@ -66,6 +66,23 @@ def get_stereochemistry(a: Atom, ag: AtomGroup) -> str:
             return ''
 
 class IonNucleicAnalysis(AnalysisBase):
+    """Analyze ion binding to RNA (though it could be applied to anything really).
+
+    Classifies the binding motifs according to MgRNA nomenclature, e.g.:
+        - 'Oph': Bound to one non-bridging phosphate oxygen atom
+        - 'fac-3Oph': Bound to 3 non-bridging phosphate oxygen atoms with `fac` stereoisomery
+        - etc.
+
+    RNA ligand types:
+        - Oph: non-bridging phosphate oxygen atoms (O1P, O2P)
+        - Ob: base oxygen
+        - Or: ribose oxygen
+        - Nb: base nitrogen
+        - Ow: water oxygen
+        - X: other
+    
+    """
+
     _analysis_algorithm_is_parallelizable = True
 
     @classmethod
@@ -78,13 +95,27 @@ class IonNucleicAnalysis(AnalysisBase):
     def __init__(
             self,
             universe: Universe,
-            ionsel: str,
-            inner_cutoff: float,
-            outer_cutoff: float | None = None,
+            ionsel: str = 'name MG',
             ligsel: str = 'nucleic',
+            inner_cutoff: float = 2.5,
+            outer_cutoff: float | None = None,
             verbose: bool = True,
             ):
-        
+        """
+        Parameters
+        ----------
+        universe : Universe
+        ionsel: str, optional ('name MG')
+            selection of "ions", central particles whose inner (and outer) shell will be analyzed
+        ligsel: str, optional ('nucleic')
+            selection whose atoms will be treated as ligands for `ionsel`
+        inner_cutoff: float, optional (2.5 Angstroms)
+            cutoff radius for the inner (first) solvation shell
+        outer_cutoff: float | None, optional (None)
+            cutoff radius for the outer (second) solvation shell
+        verbose: bool, optional (True)
+            show progress
+        """
         super(IonNucleicAnalysis, self).__init__(universe.trajectory, verbose=verbose)
 
         self.u = universe

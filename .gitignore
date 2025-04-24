@@ -2,13 +2,12 @@ ligandexchange/
 
 # Hidden files
 .*
-!.git*
+!.gitignore
 
 # Python stuff
 .venv/
 __pycache__/
 *.egg-info
-build
 
 # Data files and outputs
 *.cpt
