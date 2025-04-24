@@ -35,8 +35,10 @@ LABELS = {
     'Y': r'$Y$',
     'MG': 'Mg²⁺',
     'NA': 'Na⁺',
-    '7ez0': '7ez0',
-    '7ez0_noion': '7ez0 (w/o PDB ions)',
+    '7ez0': '7ez0 (1)',
+    '7ez0_2': '7ez0 (2)',
+    '7ez0_noion': '7ez0 (1) (w/o PDB ions)',
+    '7ez0_noion_2': '7ez0 (2) (w/o PDB ions)',
 }
 
 def plot_metad_fes(sim: MetadSim, method='hills', ax=None, bins=10, **kwargs):

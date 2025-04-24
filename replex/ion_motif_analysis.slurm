@@ -11,7 +11,7 @@ module purge
 
 systems="7ez0 7ez0_noion"
 forcefields="ecc_spce"
-repids="00"
+repids="11"
 
 for system in $systems; do
   for forcefield in $forcefields; do

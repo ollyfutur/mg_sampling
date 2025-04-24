@@ -10,6 +10,17 @@ class ReplexLog:
     def mean_acceptance(self, start=0, stop=-1):
         return np.sum(self.exchanges[start:stop+1], axis=0) / (~np.isnan(self.probas[start:stop+1])).sum(axis=0)
 
+    def count_half_trips(self, start=0, stop=-1):
+        is_low = self.repindices[start:stop+1, 0, None] == np.arange(self.nrep)
+        is_high = self.repindices[start:stop+1, -1, None] == np.arange(self.nrep)
+        states = (-1 * is_low + 1 * is_high)
+        states = [s[s != 0] for s in states.T]
+        n_half_trips = [(s[1:] != s[:-1]).sum() for s in states]
+        return np.array(n_half_trips)
+
+    def count_round_trips(self, start=0, stop=-1):
+        return self.count_half_trips(start, stop) // 2
+
     def __len__(self):
         return len(self.steps)
 
@@ -43,6 +54,7 @@ def parse_logfile(path: str) -> ReplexLog:
         parities = []
         exchanges = []
         probas = []
+        repindices = [np.arange(nrep)]
         for line in f:
             if line.startswith("Replica exchange at step"):
                 split = line.split()
@@ -53,13 +65,16 @@ def parse_logfile(path: str) -> ReplexLog:
                 parities.append(parity)
                 for line in f:
                     if line.startswith("Repl ex"):
+                        repindex = repindices[-1].copy()
                         split = line.removeprefix("Repl ex").split("x")
                         exchange = (nrep - 1) * [False]
                         i = -1
                         for s in split[:-1]:
                             i += len(s.split())
                             exchange[i] = True
+                            repindex[i], repindex[i+1] = repindex[i+1], repindex[i]
                         exchanges.append(exchange)
+                        repindices.append(repindex)
                         break
                 for line in f:
                     if line.startswith("Repl pr"):
@@ -77,6 +92,7 @@ def parse_logfile(path: str) -> ReplexLog:
     rexlog.parities = np.array(parities, dtype=bool)
     rexlog.exchanges = np.array(exchanges, dtype=bool)
     rexlog.probas = np.array(probas, dtype=float)
+    rexlog.repindices = np.array(repindices, dtype=int)
 
     return rexlog
 
@@ -92,6 +108,11 @@ def print_summary(rexlog: ReplexLog, start:float=0, stop:float=np.inf):
     print("Total attempts:", len(rexlog.steps[i:j+1]))
     print("  odd:", rexlog.parities[i:j+1].sum())
     print("  even:", (~rexlog.parities[i:j+1]).sum())
+    print("Half trips:")
+    print("  ".join(f"{i:>2d}" for i in range(rexlog.nrep)))
+    print("  ".join(f"{k:>2d}" for k in rexlog.count_half_trips(i, j)))
+    print("Final replica indices:")
+    print("  ".join(f"{i:>2d}" for i in rexlog.repindices[-1]))
     print("Average probabilities:")
     print("  ".join(f"{a:>2d} ↔ {a+1:<2d}" for a in range(rexlog.nrep - 1)))
     print("  ".join(f"{p:^7.2f}" for p in np.nanmean(rexlog.probas[i:j+1], axis=0)))
