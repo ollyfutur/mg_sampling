@@ -2,7 +2,7 @@ from collections import defaultdict, Counter
 
 from MDAnalysis import Universe
 from MDAnalysis.core.groups import Atom, AtomGroup
-from MDAnalysis.lib.distances import calc_angles
+from MDAnalysis.lib.distances import calc_angles, distance_array
 from MDAnalysis.analysis.base import AnalysisBase
 from MDAnalysis.analysis.results import ResultsGroup
 
@@ -99,6 +99,7 @@ class IonNucleicAnalysis(AnalysisBase):
             ligsel: str = 'nucleic',
             inner_cutoff: float = 2.5,
             outer_cutoff: float | None = None,
+            output_distances: bool = False,
             verbose: bool = True,
             ):
         """
@@ -113,6 +114,8 @@ class IonNucleicAnalysis(AnalysisBase):
             cutoff radius for the inner (first) solvation shell
         outer_cutoff: float | None, optional (None)
             cutoff radius for the outer (second) solvation shell
+        output_distances: bool, optional (False)
+            save distances to ligands
         verbose: bool, optional (True)
             show progress
         """
@@ -126,6 +129,7 @@ class IonNucleicAnalysis(AnalysisBase):
             raise ValueError("Must have 0 < `inner_cutoff` < `outer_cutoff`")
         self.inner_cutoff = inner_cutoff
         self.outer_cutoff = outer_cutoff
+        self.output_distances = output_distances
     
     def _prepare(self):
         self._ions = self.u.select_atoms(self.ionsel)
@@ -176,6 +180,15 @@ class IonNucleicAnalysis(AnalysisBase):
                         'outer_resids': ag_lig_outer.resids.tolist(),
                         'outer_resnames': ag_lig_outer.resnames.tolist(),
                     })
+
+                if self.output_distances:
+                    inner_dist = distance_array(a.position, ag_lig_inner.positions, box=self._ts.dimensions).reshape(-1)
+                    outer_dist = distance_array(a.position, ag_lig_outer.positions, box=self._ts.dimensions).reshape(-1)
+                    data.update({
+                        'inner_dist': inner_dist.tolist(),
+                        'outer_dist': outer_dist.tolist(),
+                    })
+
                 frame.append(data)
         self.results.timeseries.append(frame)
 
