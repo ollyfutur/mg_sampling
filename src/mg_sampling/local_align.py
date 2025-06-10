@@ -216,8 +216,7 @@ class LocalAlignment(AnalysisBase):
         unew.atoms.write(outfile)
         self.results.outfiles.append(outfile)
 
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         description="Locally align a structure onto another residue-by-residue by superposing aligned local environments. "
         "The alignment selections for reference and for input structures must match exactly. "
@@ -293,3 +292,6 @@ if __name__ == "__main__":
         analysis.run(backend="multiprocessing", n_workers=args.processes)
     else:
         analysis.run(backend="serial")
+
+if __name__ == "__main__":
+    main()

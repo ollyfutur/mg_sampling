@@ -216,10 +216,12 @@ def save_map(path, map, map_params):
         mrc.set_data(map)
         mrc.voxel_size = map_params['dx']
 
-def voxels_around(ag, radius, map_params):
+def voxels_around(ag: AtomGroup, radius: float, map_params):
     x0 = np.asarray(map_params['x0'])
     dx = np.asarray(map_params['dx'])
     n = (np.asarray(radius) // dx).astype(int)
+
+    # Fast bounding box preselection
     vox_indices = []
     for a in ag:
         ijk = ((a.position - x0) // dx).astype(int)
@@ -228,9 +230,17 @@ def voxels_around(ag, radius, map_params):
         bbox_indices = np.ravel_multi_index(bbox_ijk, map_params['nbin'], order='F')
         vox_indices.append(bbox_indices)
     vox_indices = np.unique(np.concatenate(vox_indices))
+
+    # Distance check
+    vox_xyz = get_voxels(map_params, vox_indices=vox_indices)
+    d2 = (vox_xyz[:, :, None] - ag.positions[:, None, :])**2)
+    mask = np.any(d2 <= radius**2, axis=-1)
+    vox_indices = vox_indices[mask]
+    print(mask)
+
     return vox_indices
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(
         prog="python forward_density.py",
         description="Forward mapping and validation of structural models and trajectories against cryo-EM map",
@@ -246,9 +256,9 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, choices=['auto', 'cpu', 'gpu'], help="(auto) Device")
     parser.add_argument('--nchunk', type=int, default=100, help="(100) Number of chunks to divide voxel computation")
     parser.add_argument('--ref', type=str, help="Reference structure used for voxel selection")
-    vox_parser = parser.add_mutually_exclusive_group(required=False)
-    vox_parser.add_argument('--vox-indices', type=str, help="(voxel_indices.npy) Voxel indices file name")
-    vox_parser.add_argument('--vox-around', nargs=2, metavar=('R', 'SEL'), help="Select voxels around R the SEL in reference structure")
+    parser.add_argument('--vox-indices', type=str, help="(voxel_indices.npy) Voxel indices file name")
+    parser.add_argument('--vox-around', nargs=2, metavar=('R', 'SEL'), help="Select voxels around R the SEL in reference structure", action='append')
+    parser.add_argument('--vox-not-around', nargs=2, metavar=('R', 'SEL'), help="Exclude voxels around R the SEL in reference structure", action='append')
     parser.add_argument('--tempfactor', type=float, help="Force this temperature factor (B-factor)")
 
     args = parser.parse_args()
@@ -284,13 +294,23 @@ if __name__ == '__main__':
         if args.ref is None:
             parser.error("--vox-around requires setting --ref")
         vox_ref = mda.Universe(args.ref)
-        vox_r, vox_sel = args.vox_around
-        vox_ag = vox_ref.select_atoms(vox_sel)
-        vox_indices = voxels_around(vox_ag, vox_r, map_params)
-        print("Selecting voxels around:")
-        print("  Reference:", args.ref)
-        print("  Selection:", vox_sel)
-        print("  Radius:", vox_r)
+        vox_indices = []
+        for vox_r, vox_sel in args.vox_around:
+            vox_ag = vox_ref.select_atoms(vox_sel)
+            _inds = voxels_around(vox_ag, vox_r, map_params)
+            vox_indices = np.union1d(vox_indices, _inds)
+            print(f"Selecting {len(_inds)} voxels around:")
+            print("  Reference:", args.ref)
+            print("  Selection:", vox_sel)
+            print("  Radius:", vox_r)
+        for vox_r, vox_sel in args.vox_not_around:
+            vox_ag = vox_ref.select_atoms(vox_sel)
+            _inds = voxels_around(vox_ag, vox_r, map_params)
+            vox_indices = np.setdiff1d(vox_indices, _inds)
+            print(f"Excluding {len(_inds)} voxels around:")
+            print("  Reference:", args.ref)
+            print("  Selection:", vox_sel)
+            print("  Radius:", vox_r)
     print("  Total number:", len(vox_indices))
 
     tot_map = None
@@ -315,3 +335,6 @@ if __name__ == '__main__':
         _map = _map.reshape(map_params['nbin'])
         save_map(args.out, _map, map_params)
         print("Output file:", args.out)
+
+if __name__ == '__main__':
+    main()
