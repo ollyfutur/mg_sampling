@@ -17,6 +17,8 @@ dependencies = [
   "bussilab",
   "pdbfixer @ git+https://github.com/openmm/pdbfixer.git@29fcf15f95f19f92211283fefdd0a086da37d646",
   "nbconvert",
+  "mrcfile",
+  "torch",
 ]
 requires-python = ">=3.11"
 authors = [
@@ -31,3 +33,5 @@ description = "Python code for enhanced Mg-RNA dynamics project"
 read_exchanges = "mg_sampling.read_exchanges:main"
 optimize_scalings = "mg_sampling.optimize_scalings:main"
 ion_motif_analysis = "mg_sampling.ion_motif_analysis:main"
+forward_density = "mg_sampling.forward_density:main"
+local_align = "mg_sampling.local_align"
