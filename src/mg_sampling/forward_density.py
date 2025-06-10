@@ -5,6 +5,7 @@ Backmapping of density map from (an ensemble of) structures
 from collections import Counter
 
 import numpy as np
+from scipy.spatial.distance import cdist
 
 import mrcfile
 
@@ -228,15 +229,11 @@ def voxels_around(ag: AtomGroup, radius: float, map_params):
         index_ranges = [np.arange(low, high+1) for low, high in zip(ijk - n, ijk + n)]
         bbox_ijk = tuple(map(np.ravel, np.meshgrid(*index_ranges, indexing='ij')))
         bbox_indices = np.ravel_multi_index(bbox_ijk, map_params['nbin'], order='F')
-        vox_indices.append(bbox_indices)
+        # Distance check
+        bbox_xyz = get_voxels(map_params, vox_indices=bbox_indices)
+        mask = np.sum((bbox_xyz - a.position)**2, axis=-1) <= radius**2
+        vox_indices.append(bbox_indices[mask])
     vox_indices = np.unique(np.concatenate(vox_indices))
-
-    # Distance check
-    vox_xyz = get_voxels(map_params, vox_indices=vox_indices)
-    d2 = (vox_xyz[:, :, None] - ag.positions[:, None, :])**2)
-    mask = np.any(d2 <= radius**2, axis=-1)
-    vox_indices = vox_indices[mask]
-    print(mask)
 
     return vox_indices
 
@@ -262,8 +259,6 @@ def main():
     parser.add_argument('--tempfactor', type=float, help="Force this temperature factor (B-factor)")
 
     args = parser.parse_args()
-    if args.vox_around is not None:
-        args.vox_around[0] = float(args.vox_around[0])
 
     if args.device == 'auto':
         if torch.cuda.is_available():
@@ -287,15 +282,21 @@ def main():
         print("    nbin:", map_params['nbin'])
         print("    nbin_tot:", map_params['nbin_tot'])
 
+
     if args.vox_indices is not None:
         vox_indices = np.load(args.vox_indices)
         print("Voxel index file:", args.vox_indices)
-    elif args.vox_around is not None:
+    else:
+        vox_indices = np.array([], dtype=int)
+
+    if args.vox_around is not None:
+
         if args.ref is None:
             parser.error("--vox-around requires setting --ref")
         vox_ref = mda.Universe(args.ref)
-        vox_indices = []
+
         for vox_r, vox_sel in args.vox_around:
+            vox_r = float(vox_r)
             vox_ag = vox_ref.select_atoms(vox_sel)
             _inds = voxels_around(vox_ag, vox_r, map_params)
             vox_indices = np.union1d(vox_indices, _inds)
@@ -303,16 +304,26 @@ def main():
             print("  Reference:", args.ref)
             print("  Selection:", vox_sel)
             print("  Radius:", vox_r)
+
+    if args.vox_not_around is not None:
+
+        if args.ref is None:
+            parser.error("--vox-not-around requires setting --ref")
+        vox_ref = mda.Universe(args.ref)
+
         for vox_r, vox_sel in args.vox_not_around:
+            vox_r = float(vox_r)
             vox_ag = vox_ref.select_atoms(vox_sel)
             _inds = voxels_around(vox_ag, vox_r, map_params)
+            assert _inds.dtype == int
             vox_indices = np.setdiff1d(vox_indices, _inds)
             print(f"Excluding {len(_inds)} voxels around:")
             print("  Reference:", args.ref)
             print("  Selection:", vox_sel)
             print("  Radius:", vox_r)
-    print("  Total number:", len(vox_indices))
 
+    assert vox_indices.dtype == int
+    print("Final voxel number:", len(vox_indices))
     tot_map = None
     for topfile in args.input:
         u = mda.Universe(topfile)
