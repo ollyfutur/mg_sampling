@@ -14,6 +14,14 @@ from MDAnalysis.analysis.base import AnalysisBase
 
 from tqdm import tqdm
 
+import cProfile
+
+def reorder_residue_atoms(ag):
+    """
+    Reorder atoms in `ag` by resindex, then by name.
+    """
+    order = np.lexsort((ag.names, ag.resindices))
+    return ag[order]
 
 def wrap_around(ag1, position):
     """Wraps atoms in `ag1` in the unit cell centered at `position`"""
@@ -32,6 +40,7 @@ def local_align(
     align_radius: float | None = None,
     out_sel: str = "all",
     out_radius: float | None = None,
+    reorder: bool = False,
     verbose: bool = False,
 ):
     """
@@ -67,20 +76,25 @@ def local_align(
     mobile = mobile.atoms
     reference = reference.atoms
 
+    if reorder:
+        mobile = reorder_residue_atoms(mobile)
+        reference = reorder_residue_atoms(reference)
+
     ref_align_sel = align_sel if ref_align_sel is None else ref_align_sel
 
-    mob_align = mobile.select_atoms(align_sel)
-    ref_align = reference.select_atoms(ref_align_sel)
+    mob_align = mobile.select_atoms(align_sel, sorted=False)
+    ref_align = reference.select_atoms(ref_align_sel, sorted=False)
     if len(mob_align) != len(ref_align):
         raise ValueError(
             "Mobile and reference alignment selection should contain the same number of atoms. "
             f"({len(mob_align)} != {len(ref_align)})"
         )
-    if not np.all(mob_align.types == ref_align.types):
+    if not np.all(mob_align.names == ref_align.names):
         warnings.warn(
             "Mobile and reference alignment selections have the same number of atoms but different "
             "atom types, please make sure this is expected."
         )
+    mob_out_or_align = mobile.select_atoms(f"({align_sel}) or ({out_sel})")
     # Topology attribute lists
     indices = []
     resindices = []
@@ -97,24 +111,35 @@ def local_align(
         _ref = ref_align.select_atoms(
             f"resindex {r.resindex} or around {align_radius} resindex {r.resindex}",
             periodic=False,
+            sorted=False,
         )
         # Get corresponding mobile atoms
+        # We match indexing inside `ref_align` and `mob_align`
         _, _, _inds = np.intersect1d(
             _ref.indices, ref_align.indices, assume_unique=True, return_indices=True
         )
         _mob = mob_align[_inds]
-        # Align
-        _ = align.alignto(_mob, _ref)
+
+        # Select the atoms that need to be added
         _mob_sel = f"index {' '.join(map(str, _mob.indices))}"
-        _toadd = mobile.select_atoms(
-            f"{out_sel} and (around {out_radius} {_mob_sel} or {_mob_sel})"
+        _toadd = mob_out_or_align.select_atoms(
+            f"(around {out_radius} ({_mob_sel})) and ({out_sel})",
+            sorted=False,
         )
+
+        # Trick: only apply alignment to _toadd speeds things up...
+        # ... but we need to reverse it immediately after (*)
+        _temp_pos = _toadd.positions.copy()
+        _ = align.alignto(_mob, _ref, subselection=_toadd)
         # Wrap _toadd in the unit cell centered around r.
-        wrap_around(_toadd, _mob.center_of_mass())
+        wrap_around(_toadd, _ref.center_of_mass())  # _ref not _mob since _mob may not have moved
 
         indices.append(_toadd.indices)
         resindices.append(_toadd.resindices)
         positions.append(_toadd.positions)
+
+        # (*)
+        _toadd.positions = _temp_pos
 
         for attrname in attrs:
             attrs[attrname].append(getattr(_toadd, attrname))
@@ -183,6 +208,7 @@ class LocalAlignment(AnalysisBase):
         out_sel: str = "all",
         out_radius: float = 5,
         outpath: str = "aligned.pdb",
+        reorder: bool = False,
         verbose: bool = False,
     ):
         super(LocalAlignment, self).__init__(
@@ -195,7 +221,9 @@ class LocalAlignment(AnalysisBase):
         self.align_radius = align_radius
         self.out_sel = out_sel
         self.out_radius = out_radius
+        self.reorder = reorder
         self.outpath = Path(outpath)
+        self.verbose = verbose
 
     def _prepare(self):
         self.results.outfiles = []
@@ -210,7 +238,8 @@ class LocalAlignment(AnalysisBase):
             align_radius=self.align_radius,
             out_sel=self.out_sel,
             out_radius=self.out_radius,
-            verbose=False,
+            reorder=self.reorder,
+            verbose=self.verbose,
         )
         outfile = self.outpath.with_stem(f"{self.outpath.stem}_{self._ts.frame}")
         unew.atoms.write(outfile)
@@ -266,6 +295,7 @@ def main():
         type=int,
         help="Number of processes for parallelizing trajectory alignment",
     )
+    parser.add_argument("--reorder", action="store_true", help="Reorder atoms within residues before alignment, usefull if ordering differs in reference and input files.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show progress")
     args = parser.parse_args()
 
@@ -285,13 +315,16 @@ def main():
         align_radius=args.ralign,
         out_sel=args.outsel,
         out_radius=args.rout,
+        reorder=args.reorder,
         verbose=args.verbose,
     )
 
     if args.processes is not None:
         analysis.run(backend="multiprocessing", n_workers=args.processes)
     else:
-        analysis.run(backend="serial")
+        analysis.run(backend="serial", start=0, stop=1)
 
 if __name__ == "__main__":
-    main()
+    prof = cProfile.Profile()
+    prof.run("main()")
+    prof.print_stats(sort='cumtime')
