@@ -1,7 +1,8 @@
 """
-Local alignment.
+Local or global alignment.
 """
 
+import sys
 import warnings
 import argparse
 from pathlib import Path
@@ -11,10 +12,9 @@ import MDAnalysis as mda
 from MDAnalysis import AtomGroup, Universe
 from MDAnalysis.analysis import align
 from MDAnalysis.analysis.base import AnalysisBase
+from MDAnalysis.analysis.results import ResultsGroup
 
 from tqdm import tqdm
-
-import cProfile
 
 def reorder_residue_atoms(ag):
     """
@@ -23,6 +23,7 @@ def reorder_residue_atoms(ag):
     order = np.lexsort((ag.names, ag.resindices))
     return ag[order]
 
+
 def wrap_around(ag1, position):
     """Wraps atoms in `ag1` in the unit cell centered at `position`"""
     position = np.asarray(position)
@@ -30,6 +31,50 @@ def wrap_around(ag1, position):
     ag1.translate(box_center - position)
     ag1.wrap()
     ag1.translate(position - box_center)
+
+
+def global_align(
+    mobile: AtomGroup | Universe,
+    reference: AtomGroup | Universe,
+    align_sel: str = "nucleic",
+    ref_align_sel: str | None = None,
+    align_radius: float | None = None,
+    out_sel: str = "all",
+    out_radius: float | None = None,
+    reorder: bool = False,
+    verbose: bool = False,
+):
+    mobile = mobile.atoms
+    reference = reference.atoms
+
+    if reorder:
+        mobile = reorder_residue_atoms(mobile)
+        reference = reorder_residue_atoms(reference)
+
+    ref_align_sel = align_sel if ref_align_sel is None else ref_align_sel
+
+    mob_align = mobile.select_atoms(align_sel, sorted=False)
+    ref_align = reference.select_atoms(ref_align_sel, sorted=False)
+    if len(mob_align) != len(ref_align):
+        raise ValueError(
+            "Mobile and reference alignment selection should contain the same number of atoms. "
+            f"({len(mob_align)} != {len(ref_align)})"
+        )
+    if not np.all(mob_align.names == ref_align.names):
+        warnings.warn(
+            "Mobile and reference alignment selections have the same number of atoms but different "
+            "atom types, please make sure this is expected."
+        )
+    mob_out = mobile.select_atoms(f"({out_sel}) or ({align_sel})", sorted=False)
+    mob_out = mob_out.select_atoms(
+        f"(around {out_radius} ({align_sel})) or ({align_sel})", sorted=False
+    )
+    wrap_around(mob_out, mob_align.center_of_mass())
+    # TODO: wrap_around using minimum image convention for the entire mob_align
+
+    _ = align.alignto(mob_align, ref_align, subselection=mob_out)
+
+    return mob_out
 
 
 def local_align(
@@ -42,7 +87,7 @@ def local_align(
     out_radius: float | None = None,
     reorder: bool = False,
     verbose: bool = False,
-):
+) -> mda.Universe:
     """
     Creates a new Universe by mapping local parts of a given `mobile` structure onto a `reference` structure.
     This is the algorithm:
@@ -126,14 +171,13 @@ def local_align(
             f"(around {out_radius} ({_mob_sel})) and ({out_sel})",
             sorted=False,
         )
-
+        # At that point, even if _mob is whole, _toadd might be cut across PBC so we rewrap
+        # around _mob center of mass.
         # Trick: only apply alignment to _toadd speeds things up...
         # ... but we need to reverse it immediately after (*)
         _temp_pos = _toadd.positions.copy()
+        wrap_around(_toadd, _mob.center_of_mass())
         _ = align.alignto(_mob, _ref, subselection=_toadd)
-        # Wrap _toadd in the unit cell centered around r.
-        wrap_around(_toadd, _ref.center_of_mass())  # _ref not _mob since _mob may not have moved
-
         indices.append(_toadd.indices)
         resindices.append(_toadd.resindices)
         positions.append(_toadd.positions)
@@ -158,12 +202,16 @@ def local_align(
     # tempfactor = np.ones(n_atoms) * 6.3  # TODO: why 6.3?
 
     # Account for repeated atoms using "occupancy"
-    _, unique_inverse, unique_counts = np.unique(indices, return_inverse=True, return_counts=True)
+    _, unique_inverse, unique_counts = np.unique(
+        indices, return_inverse=True, return_counts=True
+    )
     occupancies = 1 / unique_counts[unique_inverse]
 
     # Get unique resindices in new topology
     res_unique, res_unique_indices, res_unique_inverse = np.unique(
-        resindices, return_index=True, return_inverse=True,
+        resindices,
+        return_index=True,
+        return_inverse=True,
     )
     n_residues = len(res_unique)
 
@@ -174,7 +222,7 @@ def local_align(
         atom_resindex=res_unique_inverse,
         trajectory=True,
     )
-    unew.add_TopologyAttr('occupancy', occupancies)
+    unew.add_TopologyAttr("occupancy", occupancies)
 
     for attrname in attrs:
         # Add per-atom attributes
@@ -191,7 +239,7 @@ def local_align(
     return unew
 
 
-class LocalAlignment(AnalysisBase):
+class Alignment(AnalysisBase):
     @classmethod
     def get_supported_backends(cls):
         return ("serial", "multiprocessing", "dask")
@@ -202,6 +250,7 @@ class LocalAlignment(AnalysisBase):
         self,
         mobile: AtomGroup | Universe,
         reference: AtomGroup | Universe,
+        mode: str = "global",
         align_sel: str = "nucleic",
         ref_align_sel: str | None = None,
         align_radius: float = 12,
@@ -211,11 +260,14 @@ class LocalAlignment(AnalysisBase):
         reorder: bool = False,
         verbose: bool = False,
     ):
-        super(LocalAlignment, self).__init__(
-            mobile.universe.trajectory, verbose=verbose
-        )
+        super(Alignment, self).__init__(mobile.universe.trajectory, verbose=verbose)
+
+        if mode not in ("global", "residue"):
+            raise ValueError("`mode` must be 'global' or 'residue'")
+
         self.mobile = mobile
         self.reference = reference
+        self.mode = mode
         self.align_sel = align_sel
         self.ref_align_sel = ref_align_sel
         self.align_radius = align_radius
@@ -227,10 +279,33 @@ class LocalAlignment(AnalysisBase):
 
     def _prepare(self):
         self.results.outfiles = []
-        pass
 
     def _single_frame(self):
+        if self.mode == "residue":
+            self._single_frame_local()
+        elif self.mode == "global":
+            self._single_frame_global()
+
+    def _single_frame_local(self):
         unew = local_align(
+            self.mobile,
+            self.reference,
+            align_sel=self.align_sel,
+            ref_align_sel=self.ref_align_sel,
+            align_radius=self.align_radius,
+            out_sel=self.out_sel,
+            out_radius=self.out_radius,
+            reorder=self.reorder,
+            verbose=self.verbose,
+        )
+        outfile = self.outpath.with_stem(f"{self.outpath.stem}_{self._ts.frame}")
+        with mda.Writer(outfile, multiframe=False) as W:
+            W.write(unew.atoms)
+            del(W.obj)  # This is needed to avoid a memory leak
+        self.results.outfiles.append(outfile)
+
+    def _single_frame_global(self):
+        unew = global_align(
             self.mobile,
             self.reference,
             align_sel=self.align_sel,
@@ -245,16 +320,31 @@ class LocalAlignment(AnalysisBase):
         unew.atoms.write(outfile)
         self.results.outfiles.append(outfile)
 
+    def _get_aggregator(self):
+        return ResultsGroup(lookup={"outfiles": ResultsGroup.flatten_sequence})
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Locally align a structure onto another residue-by-residue by superposing aligned local environments. "
+        description="Align a structure onto another residue-by-residue by superposing globally or "
+        "aligned local environments. "
         "The alignment selections for reference and for input structures must match exactly. "
         "Repeated atoms are weighted accordingly in the occupancy field.",
     )
 
     parser.add_argument("input", type=str, help="Structure to align")
     parser.add_argument("--traj", type=str, nargs="*", help="Trajectory file(s)")
+    parser.add_argument("--start", type=int, help="Trajectory starting frame")
+    parser.add_argument("--stop", type=int, help="Trajectory end frame (exclusive)")
+    parser.add_argument("--step", type=int, help="Trajectory frame stride")
     parser.add_argument("--ref", type=str, help="Reference structure")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["residue", "global"],
+        default="residue",
+        help="Alignment mode",
+    )
     parser.add_argument(
         "-o",
         "--output",
@@ -295,7 +385,11 @@ def main():
         type=int,
         help="Number of processes for parallelizing trajectory alignment",
     )
-    parser.add_argument("--reorder", action="store_true", help="Reorder atoms within residues before alignment, usefull if ordering differs in reference and input files.")
+    parser.add_argument(
+        "--reorder",
+        action="store_true",
+        help="Reorder atoms within residues before alignment, usefull if ordering differs in reference and input files.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Show progress")
     args = parser.parse_args()
 
@@ -306,9 +400,10 @@ def main():
     )
     ref = mda.Universe(args.ref)
 
-    analysis = LocalAlignment(
+    analysis = Alignment(
         u,
         ref,
+        mode=args.mode,
         outpath=args.output,
         align_sel=args.sel,
         ref_align_sel=args.refsel,
@@ -320,11 +415,16 @@ def main():
     )
 
     if args.processes is not None:
-        analysis.run(backend="multiprocessing", n_workers=args.processes)
+        analysis.run(
+            backend="multiprocessing",
+            n_workers=args.processes,
+            start=args.start,
+            step=args.step,
+            stop=args.stop,
+        )
     else:
-        analysis.run(backend="serial", start=0, stop=1)
+        analysis.run(backend="serial", start=args.start, step=args.step, stop=args.stop)
+
 
 if __name__ == "__main__":
-    prof = cProfile.Profile()
-    prof.run("main()")
-    prof.print_stats(sort='cumtime')
+    main()
