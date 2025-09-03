@@ -135,8 +135,9 @@ def get_map_params(mrc) -> dict:
             float(mrc.voxel_size.z),
         ],
     }
-    # reorder so that is always xyz format
+    # internally, reorder so that is always xyz format
     axes_order = np.argsort(mrc_params["map"])
+    mrc_params["filemap"] = mrc_params["map"]
     mrc_params["map"] = [mrc_params["map"][k] for k in axes_order]
     mrc_params["nbin"] = [mrc_params["nbin"][k] for k in axes_order]
     mrc_params["x0"] = [mrc_params["x0"][k] for k in axes_order]
@@ -317,7 +318,6 @@ def main():
     parser.add_argument(
         "--tempfactor", type=float, help="Force this temperature factor (B-factor)"
     )
-    parser.add_argument("-p", "--processes", type=int, help="Number of workers")
 
     args = parser.parse_args()
 

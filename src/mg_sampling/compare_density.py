@@ -26,6 +26,7 @@ def main():
         print("Input Cryo-EM map A:")
         print("  Filename:", args.mapA)
         print("  Parameters:")
+        print("    crs:", mapA_params['filemap'])
         print("    x0:", mapA_params['x0'])
         print("    dx:", mapA_params['dx'])
         print("    nbin:", mapA_params['nbin'])
@@ -35,12 +36,13 @@ def main():
         print("Input Cryo-EM map B:")
         print("  Filename:", args.mapB)
         print("  Parameters:")
+        print("    crs:", mapB_params['filemap'])
         print("    x0:", mapB_params['x0'])
         print("    dx:", mapB_params['dx'])
         print("    nbin:", mapB_params['nbin'])
         print("    nbin_tot:", mapB_params['nbin_tot'])
 
-        if mapA_params != mapB_params:
+        if any(mapA_params[key] != mapB_params[key] for key in ('x0', 'dx', 'nbin')):
             raise ValueError("Maps must have identical parameters", mapA_params, mapB_params)
         map_params = mapA_params
 
@@ -90,20 +92,21 @@ def main():
             print(f"  Min: {data.min()}")
             print(f"  Max: {data.max()}")
             print(f"  Std: {data.std()}")
- 
-        dataA = mrcA.data.ravel()[vox_indices]
-        summarize_data("A", dataA)
-        dataB = mrcB.data.ravel()[vox_indices]
-        summarize_data("B", dataB)
 
+        orderA = np.argsort(mapA_params['filemap'])
+        dataA = mrcA.data.transpose(orderA).ravel()[vox_indices]
+        summarize_data("A", dataA)
+        orderB = np.argsort(mapB_params['filemap'])
+        dataB = mrcB.data.transpose(orderB).ravel()[vox_indices]
+        summarize_data("B", dataB)
 
         print("Linear fitting of map A to map B:")
         slope, intercept, r_value, p_value, std_err = linregress(dataA, dataB)
-        print(f"  {slope = }")
-        print(f"  {intercept = }")
-        print(f"  {r_value = }")
-        print(f"  {p_value = }")
-        print(f"  {std_err = }")
+        print(f"  {slope = :.5f}")
+        print(f"  {intercept = :.5f}")
+        print(f"  {r_value = :.5f}")
+        print(f"  {p_value = :.5f}")
+        print(f"  {std_err = :.5f}")
 
         summarize_data("A_fitted", slope * dataA + intercept)
 
