@@ -2,20 +2,19 @@
 Backmapping of density map from (an ensemble of) structures
 """
 
+import argparse
 from collections import Counter
 
 import numpy as np
-from scipy.spatial.distance import cdist
 
 import mrcfile
 
 import MDAnalysis as mda
 from MDAnalysis import AtomGroup
 
-import argparse
 import torch
 
-from tqdm import trange
+from tqdm import trange, tqdm
 
 π = np.pi
 
@@ -91,6 +90,7 @@ SIGMA = {
     "CL": [0.2468, 1.5242, 6.1537, 16.6687, 42.3086],
 }
 
+
 ## the Gaussian in density (real) space is the FT of scattering factor
 ## f(r) = A * (pi/B)**1.5 * exp(-pi**2/B*r**2)
 ## B must be augmented by bfactors (bfact)
@@ -101,18 +101,26 @@ SIGMA = {
 ## and we write the forward model as:
 ## f(r) = pref * exp(-0.5 * invs2 * r**2)
 def get_fmod_param(ag: AtomGroup):
-    pref = [WEIGHT[a.type] * (π / (SIGMA[a.type] + a.tempfactor / 4))**1.5 for a in ag]
+    pref = [
+        WEIGHT[a.type] * (π / (SIGMA[a.type] + a.tempfactor / 4)) ** 1.5 for a in ag
+    ]
     invs2 = [2 * π**2 / (SIGMA[a.type] + a.tempfactor / 4) for a in ag]
     return np.array(pref), np.array(invs2)
+
 
 # get vdw radii
 def get_vdw_radii(ag: AtomGroup):
     vdw = [VDW_RADII[a.type] for a in ag]
     return np.array(vdw)
 
+
 def get_map_params(mrc) -> dict:
     mrc_params = {
-        "map": [mrc.header.mapc, mrc.header.mapr, mrc.header.maps],  # data organization
+        "map": [
+            int(mrc.header.mapc),
+            int(mrc.header.mapr),
+            int(mrc.header.maps),
+        ],  # data organization
         "nbin": [int(mrc.header.nx), int(mrc.header.ny), int(mrc.header.nz)],
         "nbin_tot": int(mrc.header.nx * mrc.header.ny * mrc.header.nz),
         "x0": [
@@ -127,11 +135,13 @@ def get_map_params(mrc) -> dict:
             float(mrc.voxel_size.z),
         ],
     }
-    # reorder so that is always xyz format
-    axes_order = np.argsort(mrc_params['map'])
-    mrc_params["nbin"] = [mrc_params['nbin'][k] for k in axes_order]
-    mrc_params["x0"] = [mrc_params['x0'][k] for k in axes_order]
-    mrc_params["dx"] = [mrc_params['dx'][k] for k in axes_order]
+    # internally, reorder so that is always xyz format
+    axes_order = np.argsort(mrc_params["map"])
+    mrc_params["filemap"] = mrc_params["map"]
+    mrc_params["map"] = [mrc_params["map"][k] for k in axes_order]
+    mrc_params["nbin"] = [mrc_params["nbin"][k] for k in axes_order]
+    mrc_params["x0"] = [mrc_params["x0"][k] for k in axes_order]
+    mrc_params["dx"] = [mrc_params["dx"][k] for k in axes_order]
     # return dictionary
     return mrc_params
 
@@ -142,18 +152,26 @@ def get_voxels(map_params, vox_indices=None):
     the indices in `vox_indices`.
     """
     if vox_indices is None:
-        vox_indices = np.arange(map_params['nbin_tot'])
+        vox_indices = np.arange(map_params["nbin_tot"])
 
-    i, j, k = np.unravel_index(vox_indices, map_params['nbin'], order='F')
+    i, j, k = np.unravel_index(vox_indices, map_params["nbin"], order="F")
     x, y, z = (
-        map_params['x0'][0] + i * map_params['dx'][0],
-        map_params['x0'][1] + j * map_params['dx'][1],
-        map_params['x0'][2] + k * map_params['dx'][2],
+        map_params["x0"][0] + i * map_params["dx"][0],
+        map_params["x0"][1] + j * map_params["dx"][1],
+        map_params["x0"][2] + k * map_params["dx"][2],
     )
     vox_xyz = np.stack([x, y, z], axis=1)
     return vox_xyz
 
-def get_model_map(ag: AtomGroup, device: str = 'cpu', vox_indices=None, cutoff: float = 4.0, nchunk: int = 100, **map_params):
+
+def get_model_map(
+    ag: AtomGroup,
+    device: str = "cpu",
+    vox_indices=None,
+    cutoff: float = 4.0,
+    chunk_size: int = 100,
+    **map_params,
+):
     """
     Returns (flattened) map from the atoms in `ag`.
     """
@@ -164,14 +182,17 @@ def get_model_map(ag: AtomGroup, device: str = 'cpu', vox_indices=None, cutoff: 
     vox_g = torch.tensor(get_voxels(map_params, vox_indices)).to(torch.float).to(device)
 
     pref, invs2 = get_fmod_param(ag)
-    pref, invs2 = torch.tensor(pref).to(torch.float).to(device), torch.tensor(invs2).to(torch.float).to(device)
+    pref, invs2 = (
+        torch.tensor(pref).to(torch.float).to(device),
+        torch.tensor(invs2).to(torch.float).to(device),
+    )
 
     nvox = len(vox_g)
-    niter = max(1, int(np.ceil(nvox / nchunk)))
+    niter = max(1, int(np.ceil(nvox / chunk_size)))
 
     for i in trange(niter):
-        i0 = i * nchunk
-        i1 = i0 + nchunk if i != niter - 1 else nvox
+        i0 = i * chunk_size
+        i1 = i0 + chunk_size if i != niter - 1 else nvox
         if i1 - i0 <= 1:
             continue
         # neighbour list index atoms, index voxels, temporary
@@ -212,76 +233,115 @@ def get_model_map(ag: AtomGroup, device: str = 'cpu', vox_indices=None, cutoff: 
     # and return map [on GPU]
     return map_sum
 
+
 def save_map(path, map, map_params):
     with mrcfile.new(path, overwrite=True) as mrc:
         mrc.set_data(map)
-        mrc.voxel_size = map_params['dx']
+        mrc.voxel_size = map_params["dx"]
+
 
 def voxels_around(ag: AtomGroup, radius: float, map_params):
-    x0 = np.asarray(map_params['x0'])
-    dx = np.asarray(map_params['dx'])
+    x0 = np.asarray(map_params["x0"])
+    dx = np.asarray(map_params["dx"])
     n = (np.asarray(radius) // dx).astype(int)
 
     # Fast bounding box preselection
     vox_indices = []
     for a in ag:
         ijk = ((a.position - x0) // dx).astype(int)
-        index_ranges = [np.arange(low, high+1) for low, high in zip(ijk - n, ijk + n)]
-        bbox_ijk = tuple(map(np.ravel, np.meshgrid(*index_ranges, indexing='ij')))
-        bbox_indices = np.ravel_multi_index(bbox_ijk, map_params['nbin'], order='F')
+        index_ranges = [np.arange(low, high + 1) for low, high in zip(ijk - n, ijk + n)]
+        bbox_ijk = tuple(map(np.ravel, np.meshgrid(*index_ranges, indexing="ij")))
+        bbox_indices = np.ravel_multi_index(bbox_ijk, map_params["nbin"], order="F")
         # Distance check
         bbox_xyz = get_voxels(map_params, vox_indices=bbox_indices)
-        mask = np.sum((bbox_xyz - a.position)**2, axis=-1) <= radius**2
+        mask = np.sum((bbox_xyz - a.position) ** 2, axis=-1) <= radius**2
         vox_indices.append(bbox_indices[mask])
     vox_indices = np.unique(np.concatenate(vox_indices))
 
     return vox_indices
+
 
 def main():
     parser = argparse.ArgumentParser(
         prog="python forward_density.py",
         description="Forward mapping and validation of structural models and trajectories against cryo-EM map",
     )
-    parser.add_argument('input', nargs='+', type=str, help='Input structure(s)')
-    parser.add_argument('--sel', type=str, default='not type H', help="('all') MDAnalysis selection string")
+    parser.add_argument("input", nargs="+", type=str, help="Input structure(s)")
+    parser.add_argument(
+        "--sel",
+        type=str,
+        default="not type H",
+        help="('all') MDAnalysis selection string",
+    )
     parser.add_argument("--map", type=str, help="Input MRC map")
-    parser.add_argument('-o', '--out', type=str, help="(map_out.mrc) Output MRC map")
+    parser.add_argument("-o", "--out", type=str, help="(map_out.mrc) Output MRC map")
     # parser.add_argument(
-        # "--threshold", type=float, metavar="TH", default=-10000.0, help="map thresold"
+    # "--threshold", type=float, metavar="TH", default=-10000.0, help="map thresold"
     # )
-    parser.add_argument('--cutoff', type=float, default=4.0, help="(4.0) Cutoff distance for Gaussians (nm)")
-    parser.add_argument('--device', type=str, choices=['auto', 'cpu', 'gpu'], help="(auto) Device")
-    parser.add_argument('--nchunk', type=int, default=100, help="(100) Number of chunks to divide voxel computation")
-    parser.add_argument('--ref', type=str, help="Reference structure used for voxel selection")
-    parser.add_argument('--vox-indices', type=str, help="(voxel_indices.npy) Voxel indices file name")
-    parser.add_argument('--vox-around', nargs=2, metavar=('R', 'SEL'), help="Select voxels around R the SEL in reference structure", action='append')
-    parser.add_argument('--vox-not-around', nargs=2, metavar=('R', 'SEL'), help="Exclude voxels around R the SEL in reference structure", action='append')
-    parser.add_argument('--tempfactor', type=float, help="Force this temperature factor (B-factor)")
+    parser.add_argument(
+        "--cutoff",
+        type=float,
+        default=4.0,
+        help="(4.0) Cutoff distance for Gaussians (nm)",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        choices=["auto", "cpu", "gpu"],
+        default="auto",
+        help="(auto) Device",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=1000,
+        help="(1000) Size of chunks to divide voxel computation",
+    )
+    parser.add_argument(
+        "--ref", type=str, help="Reference structure used for voxel selection"
+    )
+    parser.add_argument("--vox-indices", type=str, help="Voxel indices file name")
+    parser.add_argument(
+        "--vox-around",
+        nargs=2,
+        metavar=("R", "SEL"),
+        help="Select voxels around R the SEL in reference structure",
+        action="append",
+    )
+    parser.add_argument(
+        "--vox-not-around",
+        nargs=2,
+        metavar=("R", "SEL"),
+        help="Exclude voxels around R the SEL in reference structure",
+        action="append",
+    )
+    parser.add_argument(
+        "--tempfactor", type=float, help="Force this temperature factor (B-factor)"
+    )
 
     args = parser.parse_args()
 
-    if args.device == 'auto':
+    if args.device == "auto":
         if torch.cuda.is_available():
-            device = 'cuda'
+            device = "cuda"
         else:
-            device = 'cpu'
-    elif args.device == 'gpu':
-        device = 'cuda'
+            device = "cpu"
+    elif args.device == "gpu":
+        device = "cuda"
     else:
-        device = 'cpu'
+        device = "cpu"
     print(f"Device: {device}")
 
     if args.map is not None:
-        with mrcfile.open(args.map, mode="r+", permissive=True) as mrc:
+        with mrcfile.open(args.map, permissive=True) as mrc:
             map_params = get_map_params(mrc)
         print("Input Cryo-EM map:")
         print("  Filename:", args.map)
         print("  Parameters:")
-        print("    x0:", map_params['x0'])
-        print("    dx:", map_params['dx'])
-        print("    nbin:", map_params['nbin'])
-        print("    nbin_tot:", map_params['nbin_tot'])
-
+        print("    x0:", map_params["x0"])
+        print("    dx:", map_params["dx"])
+        print("    nbin:", map_params["nbin"])
+        print("    nbin_tot:", map_params["nbin_tot"])
 
     if args.vox_indices is not None:
         vox_indices = np.load(args.vox_indices)
@@ -290,7 +350,6 @@ def main():
         vox_indices = np.array([], dtype=int)
 
     if args.vox_around is not None:
-
         if args.ref is None:
             parser.error("--vox-around requires setting --ref")
         vox_ref = mda.Universe(args.ref)
@@ -306,7 +365,6 @@ def main():
             print("  Radius:", vox_r)
 
     if args.vox_not_around is not None:
-
         if args.ref is None:
             parser.error("--vox-not-around requires setting --ref")
         vox_ref = mda.Universe(args.ref)
@@ -324,28 +382,37 @@ def main():
 
     assert vox_indices.dtype == int
     print("Final voxel number:", len(vox_indices))
+
     tot_map = None
-    for topfile in args.input:
+    for topfile in tqdm(args.input):
         u = mda.Universe(topfile)
         ag = u.select_atoms(args.sel)
         if args.tempfactor is not None:
             ag.tempfactors = args.tempfactor
-        model_map = get_model_map(ag, vox_indices=vox_indices, device=device, cutoff=args.cutoff, nchunk=args.nchunk, **map_params)
+        model_map = get_model_map(
+            ag,
+            vox_indices=vox_indices,
+            device=device,
+            cutoff=args.cutoff,
+            chunk_size=args.chunk_size,
+            **map_params,
+        )
+        print("Computing density from:", topfile)
+        print("  Atoms:", dict(Counter(ag.types)))
         if tot_map is None:
             tot_map = model_map
         else:
             tot_map += model_map
-        print("Computing density from:", topfile)
-        print("  Atoms:", dict(Counter(ag.types)))
     print("Averaging", len(args.input), "models.")
     tot_map /= len(args.input)
 
     if args.out is not None:
-        _map = np.zeros(map_params['nbin_tot'], dtype=np.float32)
+        _map = np.zeros(map_params["nbin_tot"], dtype=np.float32)
         _map[vox_indices] = tot_map.cpu().numpy()
-        _map = _map.reshape(map_params['nbin'])
+        _map = _map.reshape(map_params["nbin"])
         save_map(args.out, _map, map_params)
         print("Output file:", args.out)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
