@@ -52,8 +52,8 @@ def local_align(
         - The mobile `out_sel` around `out_radius` of the residue is added
     If atoms are repeated (they are within the `out_radius` of multiple residues) their `occupancy`
     is divided accordingly.
-    Warning: make sure the alignment selections in ref and mobile are not cut across boundaries. The
-    PBC will be ignored for the alignment selection radius (but not when selecting the mapped atoms).
+    Warning: make sure the alignment selections in ref and mobile are whole (not cut across boundaries). The
+    PBC will be ignored for the alignment selection radius.
     """
 
     # Non-unique attributes
@@ -121,9 +121,20 @@ def local_align(
         _mob = mob_align[_inds]
 
         # Select the atoms that need to be added
-        _mob_sel = f"index {' '.join(map(str, _mob.indices))}"
+        # _mob_sel = f"index {' '.join(map(str, _mob.indices))}"
+        # _toadd = mob_out_or_align.select_atoms(
+        #     f"(around {out_radius} ({_mob_sel})) and ({out_sel})",
+        #     sorted=False,
+        # )
+        _ref_r = r.atoms
+        _, _, _inds = np.intersect1d(
+            _ref_r.indices, ref_align.indices, assume_unique=True, return_indices=True,
+        )
+        _out_r = mob_align[_inds]
+        _out_r_sel = f"index {' '.join(map(str, _out_r.indices))}"
         _toadd = mob_out_or_align.select_atoms(
-            f"(around {out_radius} ({_mob_sel})) and ({out_sel})",
+            f"((around {out_radius} ({_out_r_sel})) or ({_out_r_sel})) and ({out_sel})",
+            periodic=False,
             sorted=False,
         )
 
@@ -131,8 +142,6 @@ def local_align(
         # ... but we need to reverse it immediately after (*)
         _temp_pos = _toadd.positions.copy()
         _ = align.alignto(_mob, _ref, subselection=_toadd)
-        # Wrap _toadd in the unit cell centered around r.
-        wrap_around(_toadd, _ref.center_of_mass())  # _ref not _mob since _mob may not have moved
 
         indices.append(_toadd.indices)
         resindices.append(_toadd.resindices)
@@ -275,7 +284,7 @@ def main():
         "--outsel",
         type=str,
         default="not type H and not nucleic",
-        help="('not type H and nucleic') Selection for output atoms after local alignment",
+        help="('not type H and not nucleic') Selection for output atoms after local alignment",
     )
     parser.add_argument(
         "--ralign",

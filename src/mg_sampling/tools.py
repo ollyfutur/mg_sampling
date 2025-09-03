@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import re
 
 def finitemax(x):
     x = np.atleast_1d(x)
@@ -72,6 +73,28 @@ def read_plumed_fes(path):
     cv_ranges = tuple([np.array(idx) for idx in df.index.levels])
     return cv_names, cv_ranges, fes
 
+def read_xvg(path):
+    """
+    Reads .xvg as pandas dataframe.
+    """
+    columns = []
+    with open(path, 'r') as f:
+        for line in f:
+            x = re.search('^@    xaxis  label \"(.*)\"', line)
+            if x is not None:
+                columns.append(x.group(1))
+                break
+        else:
+            columns.append("")
+        
+        for line in f:
+            x = re.search('^@ s\d+ legend \"(.*)\"', line)
+            if x is not None:
+                columns.append(x.group(1))
+    
+    data = np.loadtxt(path, comments=['#', '@'])
+    df = pd.DataFrame(data, columns=columns).set_index(columns[0])
+    return df
 
 def count_round_trips(x, low=0, high=1):
     """
