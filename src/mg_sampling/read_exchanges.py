@@ -21,6 +21,12 @@ class ReplexLog:
     def count_round_trips(self, start=0, stop=-1):
         return self.count_half_trips(start, stop) // 2
 
+    def occupancy_matrix(self, start=0, stop=-1):
+        return np.array([
+            (self.repindices[start:stop+1, i, None] == np.arange(self.nrep)).mean(axis=0)
+            for i in range(self.nrep)
+        ])
+
     def __len__(self):
         return len(self.steps)
 
@@ -59,7 +65,7 @@ def parse_logfile(path: str) -> ReplexLog:
             if line.startswith("Replica exchange at step"):
                 split = line.split()
                 step, time = int(split[4]), float(split[6])
-                parity = (step // replex) % 2
+                parity = (step // replex) % 2  # 1 odd, 0 even
                 steps.append(step)
                 times.append(time)
                 parities.append(parity)
@@ -96,6 +102,118 @@ def parse_logfile(path: str) -> ReplexLog:
 
     return rexlog
 
+def parse_logfile_biasvalue(path: str) -> ReplexLog:
+    """
+    Parse a GROMACS .log file where PLUMED's REPLEX_BIASVALUE was used.
+    """
+    with open(path, 'r') as f:
+
+        for line in f:
+            if line.startswith("PLUMED: Action REPLEX_BIASVALUE"):
+                break
+        else:
+            raise GMXLogError("PLUMED Action REPLEX_BIASVALUE not found.")
+
+        for line in f:
+            if line.startswith("PLUMED:   Number of replicas"):
+                nrep = int(line.split()[4])
+                break
+        else:
+            raise GMXLogError("Number of replicas not found")
+
+        for line in f:
+            if line.startswith("PLUMED:   Exchange frequency"):
+                replex = int(line.split()[3])
+                break
+        else:
+            raise GMXLogError("Exchange frequency not found")
+
+        for line in f:
+            if line.startswith("PLUMED:   Number of exchange"):
+                nex = int(line.split()[-1])
+                break
+        else:
+            raise GMXLogError("Number of attempts per exchange step not found")
+
+        for line in f:
+            if line.startswith("PLUMED: Timestep"):
+                dt = float(line.split()[2])
+                break
+        else:
+            raise GMXLogError("Timestep not found")
+
+
+        steps = []
+        times = []
+        parities = []
+        exchanges = []
+        probas = []
+        repindices = [np.arange(nrep)]
+        for line in f:
+            if line.startswith("PLUMED: Exchange step"):
+                split = line.split()
+                step = int(split[3].removesuffix(','))
+                time = float(split[5])
+                parity = 1 - ((step // replex) - 1) * nex % 2  # 1 odd, 0 even
+                for attempt in range(nex):
+                    try:
+                        for line in f:
+                            if line.startswith("PLUMED: pacc:"):
+                                split = list(map(float, line.removeprefix("PLUMED: pacc:").split()))
+                                proba = (nrep-1) * [None]
+                                proba[(1-parity)::2] = split
+                                break
+                        else:
+                            raise GMXLogError("Expected line with pacc, not found")
+
+                        line = next(f)
+                        if line.startswith("PLUMED: acc:"):
+                            exchange = (nrep - 1) * [False]
+                            split = list(map(lambda x: True if x == '+' else False, line.removeprefix("PLUMED: acc:").split()))
+                            exchange[(1-parity)::2] = split
+                            repindex = repindices[-1].copy()
+                            for i in range(nrep-1):
+                                if exchange[i]:
+                                    repindex[i], repindex[i+1] = repindex[i+1], repindex[i]
+                        else:
+                                raise GMXLogError(f"Expected acc after pacc, instead found: {line}")
+
+                        steps.append(step)
+                        times.append(time)
+                        parities.append(parity)
+                        probas.append(proba)
+                        exchanges.append(exchange)
+                        repindices.append(repindex)
+
+                        parity = not parity
+                    except (GMXLogError, ValueError) as e:
+                        print(f"Stopped at step {step}: {e}")
+                        break
+                else:
+                    for line in f:
+                        if line.startswith("PLUMED: New replica indices:"):
+                            _repindex = np.array(list(map(int, line.removeprefix("PLUMED: New replica indices:").split())))
+                            if np.any(_repindex != repindex):
+                                raise GMXLogError(f"Discrepancy between inferred repindex ({repindex}) and logged repindex ({_repindex})")
+                            break
+                    else:
+                        raise GMXLogError("Did not find new replica indices")
+
+
+    rexlog = ReplexLog()
+    rexlog.nrep = nrep
+    rexlog.replex = replex
+    rexlog.nex = nex
+    rexlog.steps = np.array(steps, dtype=int)
+    rexlog.times = np.array(times, dtype=float)
+    rexlog.parities = np.array(parities, dtype=bool)
+    rexlog.exchanges = np.array(exchanges, dtype=bool)
+    rexlog.probas = np.array(probas, dtype=float)
+    rexlog.repindices = np.array(repindices, dtype=int)
+
+    return rexlog
+
+
 def print_summary(rexlog: ReplexLog, start:float=0, stop:float=np.inf):
     i = np.searchsorted(rexlog.times, start)
     j = min(np.searchsorted(rexlog.times, stop), len(rexlog.times)-1)
@@ -108,9 +226,13 @@ def print_summary(rexlog: ReplexLog, start:float=0, stop:float=np.inf):
     print("Total attempts:", len(rexlog.steps[i:j+1]))
     print("  odd:", rexlog.parities[i:j+1].sum())
     print("  even:", (~rexlog.parities[i:j+1]).sum())
-    print("Half trips:")
+    print("Half trips (number of times replica goes from cold to hot or vice-versa):")
     print("  ".join(f"{i:>2d}" for i in range(rexlog.nrep)))
     print("  ".join(f"{k:>2d}" for k in rexlog.count_half_trips(i, j)))
+    print("Occupancy matrix:")
+    print("  Replica:", "  ".join(f"{i:>4d}" for i in range(rexlog.nrep)))
+    for temp, occupancy in enumerate(rexlog.occupancy_matrix(i, j)):
+        print(f"  T{temp:<6d}:", "  ".join(f"{occ:.2f}" for occ in occupancy))
     print("Final replica indices:")
     print("  ".join(f"{i:>2d}" for i in rexlog.repindices[-1]))
     print("Average probabilities:")
@@ -133,10 +255,14 @@ def main():
     parser.add_argument('filepath', help="Gromacs .log file of a replica exchange simulation")
     parser.add_argument('--start', type=float, default=0.0, help="(0) Starting time [ps]")
     parser.add_argument('--stop', type=float, default=float('inf'), help="(inf) Ending time [ps]")
+    parser.add_argument('--biasvalue', action='store_true', help="Reads REPLEX_BIASVALUE output.")
 
     args = parser.parse_args()
 
-    rexlog = parse_logfile(args.filepath)
+    if args.biasvalue:
+        rexlog = parse_logfile_biasvalue(args.filepath)
+    else:
+        rexlog = parse_logfile(args.filepath)
     print_summary(rexlog, start=args.start, stop=args.stop)
 
 if __name__ == "__main__":

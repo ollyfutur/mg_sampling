@@ -1,0 +1,15 @@
+# Plumed file for testing bias kinetics
+
+mg: GROUP NDX_FILE=../index.ndx NDX_GROUP=MG
+# First OP atom in topology
+op1: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Phosphate_1
+
+dop1: DISTANCE ATOMS=mg,op1
+
+uwall: UPPER_WALLS ARG=dop1 AT=0.8 KAPPA=50
+
+#####################################################################
+### Output ##########################################################
+#####################################################################
+
+PRINT ARG=dop1,uwall.bias STRIDE=500 FILE=run.COLVAR

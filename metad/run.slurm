@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
-#SBATCH --account=EUHPC_R02_136
+#SBATCH --account=Sis25_bussi
 #SBATCH --partition=boost_usr_prod
 
 module purge

@@ -1,6 +1,9 @@
+import logging
+
 import numpy as np
 import pandas as pd
 import re
+from copy import copy
 
 def finitemax(x):
     x = np.atleast_1d(x)
@@ -21,7 +24,7 @@ def block_analysis(*inputs, func, n_blocks=5, skip=0):
     """
     Perform a block analysis of the statistic `func` that takes as arguments one or more `inputs`
     timeseries, by splitting each series in `n_blocks` of equal length. Returns the mean and
-    standard error of the mean on the `n_blocks`.
+    standard error of the mean on the `n_blocks`, ignoring the first `skip` blocks.
     """
     n_frames = len(inputs[0])
     if isinstance(skip, float):
@@ -38,6 +41,21 @@ def block_analysis(*inputs, func, n_blocks=5, skip=0):
     stderr = np.sqrt(var/n_blocks)
 
     return mean, stderr
+
+def bootstrap(*inputs, func, n_resample=20, weights=None):
+    n_frames = len(inputs[0])
+
+    outputs = []
+    for _ in range(n_resample):
+        inds = np.random.choice(n_frames, size=n_frames, p=weights)
+        _inputs = (inp[inds] for inp in inputs)
+        outputs.append(func(*_inputs))
+    
+    mean = np.mean(outputs, axis=0)
+    stderr = np.std(outputs, axis=0)
+
+    return mean, stderr
+
 
 def to_wsv(df: pd.DataFrame, path):
     with open(path, 'w') as f:
@@ -131,3 +149,55 @@ def kish_size(weights):
 
 def kish_ratio(weights):
     return kish_size(weights) / len(weights)
+
+def demux(data_list, data_times=None, repindex_file='replica_index.xvg', rtol=1e-8, atol=1e-6):
+    """
+    From an array-like (n_rep, n_frames, n_features)
+    outputs demuxed trajectories (n_rep, n_frames_processed, n_features)
+    using the replice index file `repindex_file`.
+
+    If `data_times` is `None` the first feature of the first replica is used.
+
+    The parameter `rtol` and `atol` are the relative and absolute tolerances to consider `data_times`
+    and times in `repindex_file` equal.
+    """
+    repindex = np.loadtxt(repindex_file)
+    repindex_times, repindex = repindex[:, 0], repindex[:, 1:]
+    unique, unique_indices, counts = np.unique(repindex_times, return_index=True, return_counts=True)
+    if np.any(counts > 1):
+        logging.warning(f"Found repeated times in {repindex_file}. Duplicates will be dropped, make sure they are consistent!")
+    repindex_times = unique
+    repindex = repindex[unique_indices]
+    n_reps = repindex.shape[1]
+
+    data_arr = np.array(data_list)
+
+    if data_times is None:
+        data_times = data_arr[0, :, 0]
+
+    dt = min(np.diff(repindex_times).mean(), np.diff(data_times).mean())
+
+    if data_arr.shape[0] != n_reps:
+        raise ValueError(f"Number of replicas in {repindex_file} doesn't match `data_list`")
+
+    # Gromacs saves then does replica exchange, hence at t=1*dt
+    # the replicas have the configuration strictly before t in the
+    # replica_index file, except at t=0 where they are exactly at t.
+
+    max_time = np.max(repindex_times)
+
+    demuxed_data = []
+    for itime, time in enumerate(data_times):
+        if time > max_time:
+            logging.warning(f"Data times go above replica_index times. Data will be truncated after {max_time}.")
+            break
+        idx = np.argmin(repindex_times - time)
+        if np.abs(repindex_times[idx] - time) < rtol * time + atol:  # Case 1: matching `time`
+            idx = max(idx - 1, 0)  # Take one step before `time` in `replica_index` (or 0)
+        else:  # Case 2: not matching `time`
+            idx = np.argwhere(repindex_times < time)
+            idx = idx[-1][0]  # Take first preceding `time`
+        reptemp = np.argsort(repindex[idx]).astype(int)
+        demuxed_data.append(data_arr[reptemp, itime, :])
+
+    return np.array(demuxed_data).swapaxes(0, 1)

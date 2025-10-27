@@ -13,7 +13,7 @@ $GMX pdb2gmx -f 7ez0_fixed.pdb -ff amber14sb_mMg_tip3p -water tip3p -noh &>> pre
 sed -i 's/\(^\s*[0-9]*\s*\)MG /\1mMg/g' topol_Ion_chain_N2.itp
 
 echo "Solvating ..."
-echo "System" | $GMX editconf -f conf.gro -princ -d 2 -resnr 1 -o box.gro &>> prepare.log
+echo "System" | $GMX editconf -f conf.gro -princ -d 2 -o box.gro &>> prepare.log
 $GMX solvate -cp box.gro -o box_solv.gro -p topol.top &>> prepare.log
 
 n_water=$(awk '/^SOL/ { print $2 }' topol.top)

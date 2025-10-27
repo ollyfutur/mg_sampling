@@ -1,0 +1,45 @@
+# Plumed file for testing bias kinetics
+LOAD FILE=/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/ligandexchange/LigandExchange.so
+
+mg: GROUP NDX_FILE=../index.ndx NDX_GROUP=MG
+# First OP atom in topology
+op: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Phosphate
+ow: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Water
+
+op_com: COM ATOMS=op
+dop: DISTANCE ATOMS=mg,op_com
+
+cv: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.0
+   NL_CUTOFF_AC=1.0
+   NL_STRIDE=100
+   COMPONENTS
+...
+
+_nop: COORDINATION ...
+   GROUPA=mg
+   GROUPB=op
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   NLIST
+   NL_CUTOFF=1.0
+   NL_STRIDE=100
+...
+nop: COMBINE ARG=_nop COEFFICIENTS=1.039661 PERIODIC=NO
+
+scaledcv: COMBINE ARG=cv.tot,nop COEFFICIENTS=0.7,0.436927 PERIODIC=NO
+
+uwall: UPPER_WALLS ARG=dop AT=0.8 KAPPA=50
+bias: BIASVALUE ARG=scaledcv
+
+#####################################################################
+### Output ##########################################################
+#####################################################################
+
+PRINT ARG=dop,(cv\.n.*),(cv\.func.*),cv.tot,nop,scaledcv,uwall.bias,bias.bias STRIDE=500 FILE=COLVAR

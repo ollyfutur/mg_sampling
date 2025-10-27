@@ -136,16 +136,22 @@ class IonNucleicAnalysis(AnalysisBase):
         if not self._ions:
             raise ValueError("Ion selection must contain at least one atom.")
 
+        cutoff = self.outer_cutoff if self.outer_cutoff is not None else self.inner_cutoff
+
+        # This selection is costly and is updated every frame
+        self._ag = self.u.select_atoms(f'(({self.ligsel}) and around {cutoff} ({self.ionsel})) or ({self.ionsel})', updating=True)
+
+        # These subselections are less costly and also updated every frame
         self._ags_lig_inner = [
-            self.u.select_atoms(f'not (index {a.index}) and ({self.ligsel}) and sphzone {self.inner_cutoff} (index {a.index})',
-                                updating=True)
+            self._ag.select_atoms(f'({self.ligsel}) and around {self.inner_cutoff} (index {a.index})',
+                                  updating=True)
             for a in self._ions
         ]
 
         if self.outer_cutoff is not None:
             self._ags_lig_outer = [
-                self.u.select_atoms(
-                    f'not (index {a.index}) and ({self.ligsel}) and sphlayer {self.inner_cutoff} {self.outer_cutoff} (index {a.index})',
+                self._ag.select_atoms(
+                    f'({self.ligsel}) and sphlayer {self.inner_cutoff} {self.outer_cutoff} (index {a.index})',
                     updating=True)
                 for a in self._ions
             ]

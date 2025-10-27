@@ -2,23 +2,19 @@
 #SBATCH --job-name=motifanal
 #SBATCH -N 1
 #SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --ntasks-per-node=2
-#SBATCH --account=EUHPC_R02_136
+#SBATCH --time=00:30:00
+#SBATCH --cpus-per-task=4
+#SBATCH --ntasks-per-node=8
+#SBATCH --account=Sis25_bussi
 #SBATCH --partition=boost_usr_prod
+#SBATCH --qos=boost_qos_dbg
 
-module purge
+ions="MG NA CL"
+replicas="rep??"
 
-systems="7ez0 7ez0_noion"
-forcefields="ecc_spce"
-repids="11"
-
-for system in $systems; do
-  for forcefield in $forcefields; do
-    for repid in $repids; do
-      simdir="$system/$forcefield/rep$repid"
-      srun -n 1 -c 16 ion_motif_analysis $simdir/input.gro $simdir/run.xtc -o $simdir/ion_analysis.csv -n 16 &
-    done
-  done
+for ion in $ions; do
+for rep in $replicas; do
+  srun -n 1 -c 4 --exclusive ion_motif_analysis $rep/input.gro $rep/run.xtc -o $rep/${ion}_motifs.csv -n 4 --sel "name ${ion}" --ligsel 'nucleic or name NA MG CL' --inner_cutoff 2.8 --outer_cutoff 5.0 &
+done
 done
 wait

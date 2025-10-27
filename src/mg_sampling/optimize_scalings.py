@@ -51,6 +51,7 @@ def optimize_scalings(
         lmax: float = 1.0,
         target: str = 'uniform',
         verbose: bool = False,
+        tol: float = 1e-3,
         **kwargs,
     ) -> np.ndarray:
     """
@@ -84,7 +85,7 @@ def optimize_scalings(
         if verbose: print("Loss:", f"{out:8.6f}", end='\r')
         return out
 
-    res = minimize(loss, x0, tol=1e-2, **kwargs)
+    res = minimize(loss, x0, tol=tol, **kwargs)
     if verbose: print("\nFinished minimization")
 
     if res.success:

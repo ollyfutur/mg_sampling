@@ -30,7 +30,7 @@ def main():
     if args.outer_cutoff <= 0:
         args.outer_cutoff = None
 
-    u = mda.Universe(args.topfile, args.trajfiles)
+    u = mda.Universe(args.topfile, args.trajfiles) if args.trajfiles else mda.Universe(args.topfile)
     anal = IonNucleicAnalysis(
         u,
         ionsel=args.sel,

@@ -1,13 +1,16 @@
 #!/bin/bash
-
-n_rep=16
+from_rep=16
+to_rep=23
 #####
 
 echo "PDBFixer ..."
-pdbfixer --pdbid=7ez0 --add-atoms=heavy --keep-heterogens=all --output=7ez0_fixed.pdb
+#pdbfixer --pdbid=7ez0 --add-atoms=heavy --keep-heterogens=all --output=7ez0_fixed.pdb
 
 echo "Making topology ..."
 $GMX pdb2gmx -f 7ez0_fixed.pdb -ff amber14sb_mMg_opc -water tip4p -noh &>> prepare.log
+
+### We need to ensure PDB ions have the correct atom type
+sed -i 's/\(^\s*[0-9]*\s*\)MG /\1mMg/g' topol_Ion_chain_N2.itp
 
 echo "Solvating ..."
 echo "System" | $GMX editconf -f conf.gro -princ -d 2 -resnr 1 -o box.gro &>> prepare.log
@@ -52,7 +55,7 @@ n_cl_added=$n_cl
 echo "Genion will add: $n_mg_added MG, $n_na_added NA, $n_cl_added CL"
 
 ### Prepare N independent replicas
-for i in $(seq -w 0 $((n_rep-1))); do
+for i in $(seq -w $from_rep $to_rep); do
    echo "Replica $i ..."
    mkdir rep$i
    cp topol.top topol$i.top
@@ -66,9 +69,11 @@ for i in $(seq -w 0 $((n_rep-1))); do
    )
 done
 
-for i in $(seq -w 1 $((n_rep-1))); do
-   diff topol00.top topol$i.top && rm topol$i.top || "Error: Topologies should be identical…"
+printf -v i0 "%02d" $from_rep
+[ -f topol${i0}.top ] && mv topol${i0}.top topol.top
+
+for i in $(seq -w $((from_rep+1)) $to_rep); do
+   diff topol.top topol$i.top && rm topol$i.top || echo "Error: Topologies should be identical…"
 done
 
-mv topol00.top topol.top
 rm \#*

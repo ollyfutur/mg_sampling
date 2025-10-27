@@ -74,6 +74,7 @@ def associative_loss_fn(sim: MetadSim, bias_fn, params):
     rel_entropy = entropy(new_weights, sim.weights * mask)
     return (np.max(FX) - np.min(FX))/RT + rel_entropy
 
+
 def dissociative_loss_fn(sim: MetadSim, bias_fn, params):
     """
     Loss for flattening the dissociative pathway.

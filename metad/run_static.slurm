@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=32
 ##SBATCH --ntasks-per-node=8
 #SBATCH --ntasks-per-node=1
-#SBATCH --account=EUHPC_R02_136
+#SBATCH --account=Sis25_bussi
 #SBATCH --partition=boost_usr_prod
 #SBATCH --qos=boost_qos_dbg
 
@@ -19,7 +19,7 @@ export PLUMED_NUM_THREADS=32
 
 #dirnames="ob_mMg_opc ob_nMg_tip3p op_mMg_opc op_nMg_tip3p ob_amber_tip3p ob_mMg_tip3p op_amber_tip3p op_mMg_tip3p"
 #dirnames="ob_mMg_tip3p"
-dirnames="ob_ecc_spce"
+dirnames="op_mMg_tip3p"
 for dirname in $dirnames; do
   echo $dirname
   (

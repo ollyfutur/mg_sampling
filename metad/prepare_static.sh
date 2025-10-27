@@ -1,5 +1,7 @@
-forcefields="amber_tip3p mMg_tip3p nMg_tip3p mMg_opc ecc_spce"
-otypes="op ob"
+#forcefields="amber_tip3p mMg_tip3p nMg_tip3p mMg_opc ecc_spce"
+#otypes="op ob"
+forcefields="mMg_tip3p"
+otypes="op"
 
 for ff in $forcefields; do
   for ox in $otypes; do

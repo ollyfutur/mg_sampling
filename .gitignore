@@ -1,8 +1,13 @@
+# External repositories
 ligandexchange/
+replex_biasvalue/
 
 # Hidden files
 .*
 !.gitignore
+
+# Outdated
+archive/
 
 # Python stuff
 .venv/
@@ -29,4 +34,7 @@ processed.top
 *.wsv
 *COLVAR*
 *HILLS*
+
+# Backup output
 \#*\#
+bck.*

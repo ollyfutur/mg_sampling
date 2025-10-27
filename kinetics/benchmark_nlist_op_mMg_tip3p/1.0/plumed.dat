@@ -1,0 +1,314 @@
+# Plumed file for testing bias kinetics
+LOAD FILE=/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/ligandexchange/LigandExchange.so
+
+mg: GROUP NDX_FILE=../index.ndx NDX_GROUP=MG
+# First OP atom in topology
+op: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Phosphate
+ow: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Water
+
+op_com: COM ATOMS=op
+dop: DISTANCE ATOMS=mg,op_com
+
+# Reference
+cv: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   COMPONENTS
+...
+
+# Comparison
+cv_100_11: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.1
+   NL_CUTOFF_AC=1.1
+   NL_STRIDE=100
+   COMPONENTS
+...
+
+cv_100_10: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.0
+   NL_CUTOFF_AC=1.0
+   NL_STRIDE=100
+   COMPONENTS
+...
+
+cv_100_09: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.9
+   NL_CUTOFF_AC=0.9
+   NL_STRIDE=100
+   COMPONENTS
+...
+
+cv_100_08: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.8
+   NL_CUTOFF_AC=0.8
+   NL_STRIDE=100
+   COMPONENTS
+...
+
+cv_100_07: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.7
+   NL_CUTOFF_AC=0.7
+   NL_STRIDE=100
+   COMPONENTS
+...
+
+cv_250_11: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.1
+   NL_CUTOFF_AC=1.1
+   NL_STRIDE=250
+   COMPONENTS
+...
+
+cv_250_10: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.0
+   NL_CUTOFF_AC=1.0
+   NL_STRIDE=250
+   COMPONENTS
+...
+
+cv_250_09: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.9
+   NL_CUTOFF_AC=0.9
+   NL_STRIDE=250
+   COMPONENTS
+...
+
+cv_250_08: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.8
+   NL_CUTOFF_AC=0.8
+   NL_STRIDE=250
+   COMPONENTS
+...
+
+cv_250_07: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.7
+   NL_CUTOFF_AC=0.7
+   NL_STRIDE=250
+   COMPONENTS
+...
+
+cv_500_11: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.1
+   NL_CUTOFF_AC=1.1
+   NL_STRIDE=500
+   COMPONENTS
+...
+
+cv_500_10: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.0
+   NL_CUTOFF_AC=1.0
+   NL_STRIDE=500
+   COMPONENTS
+...
+
+cv_500_09: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.9
+   NL_CUTOFF_AC=0.9
+   NL_STRIDE=500
+   COMPONENTS
+...
+
+cv_500_08: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.8
+   NL_CUTOFF_AC=0.8
+   NL_STRIDE=500
+   COMPONENTS
+...
+
+cv_500_07: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.7
+   NL_CUTOFF_AC=0.7
+   NL_STRIDE=500
+   COMPONENTS
+...
+
+cv_1000_11: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.1
+   NL_CUTOFF_AC=1.1
+   NL_STRIDE=1000
+   COMPONENTS
+...
+
+cv_1000_10: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=1.0
+   NL_CUTOFF_AC=1.0
+   NL_STRIDE=1000
+   COMPONENTS
+...
+
+cv_1000_09: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.9
+   NL_CUTOFF_AC=0.9
+   NL_STRIDE=1000
+   COMPONENTS
+...
+
+cv_1000_08: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.8
+   NL_CUTOFF_AC=0.8
+   NL_STRIDE=1000
+   COMPONENTS
+...
+
+cv_1000_07: LIGANDEXCHANGE ...
+   GROUPA=mg
+   GROUPB=op
+   GROUPC=ow
+   SWITCH={CUSTOM FUNC=0.5*(cos(pi*x/0.24)+1) R_0=1 D_0=0.18 D_MAX=0.42}
+   VAR=_nop,_now
+   FUNC=-38.307903*step(Y)*step(0.5-Y)*step(X-0.00001)*(1-cos(Y*pi*4))*(1-cos(X*pi))/4;X=x+0.10098*(1-cos(x*pi));Y=y-0.287523*(1-cos(x*pi));x=1.039661*_nop-1.039661*_now+6;y=1.039661*_nop+1.039661*_now-6
+   NLIST
+   NL_CUTOFF_AB=0.7
+   NL_CUTOFF_AC=0.7
+   NL_STRIDE=1000
+   COMPONENTS
+...
+
+scaledcv: COMBINE ARG=cv.tot COEFFICIENTS=1.0 PERIODIC=NO
+
+uwall: UPPER_WALLS ARG=dop AT=0.8 KAPPA=50
+bias: BIASVALUE ARG=scaledcv
+
+#####################################################################
+### Output ##########################################################
+#####################################################################
+
+PRINT ARG=dop,(cv\.n.*),(cv\.func.*),cv.tot,scaledcv,uwall.bias,bias.bias STRIDE=500 FILE=COLVAR
+PRINT ARG=cv.tot,(cv_.*\.tot) STRIDE=1 FILE=NL_COLVAR
