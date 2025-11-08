@@ -140,7 +140,6 @@ def get_model_map_olly(
     Returns (flattened) map at `vox_indices` from the atoms in `ag`.
     """
 
-    nbin = torch.tensor(map_params['nbin']).to(torch.int).to(device)  # (3,)
     dx = torch.tensor(map_params['dx']).to(torch.float).to(device)  # (3,)
     x0 = torch.tensor(map_params['x0']).to(torch.float).to(device)  # (3,)
     map_torch = torch.zeros(*map_params['nbin']).to(device)  # (X, Y, Z)
@@ -149,6 +148,8 @@ def get_model_map_olly(
     a_pref, a_invs2 = torch.tensor(a_pref).to(torch.float).to(device), torch.tensor(a_invs2).to(torch.float).to(device)
 
     a_xyz = torch.tensor(ag.positions).to(torch.float).to(device)  # (N, 3)
+    a_occ = torch.tensor(ag.occupancies).to(torch.float).to(device)  # (N,)
+
     a_ijk = torch.floor((a_xyz - x0) / dx).to(torch.int)  # (N, 3)
 
     oi, oj, ok = torch.ceil(cutoff / dx).to(torch.int)
@@ -159,7 +160,7 @@ def get_model_map_olly(
     av_d2 = torch.sum((av_xyz - a_xyz[:, None])**2, dim=-1)  # (N, Δ)
     av_dens = (av_d2 <= cutoff**2) * torch.sum(
         a_pref[:, None, :] * torch.exp(-0.5 * a_invs2[:, None, :] * av_d2[:, :, None]),  # (N, Δ, 5)
-        dim=-1)  # (N, Δ)
+        dim=-1) * a_occ[:, None]  # (N, Δ)
 
     v_i, v_j, v_k = av_ijk.movedim(2, 0)  # 3 * (N, Δ)
     map_torch.index_put_((v_i, v_j, v_k), av_dens, accumulate=True)
