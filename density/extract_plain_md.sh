@@ -1,7 +1,7 @@
 # Extract trajectory frames
 
 systems="7ez0"
-forcefields="mMg_tip3p_hard"
+forcefields="nMg_tip3p"
 
 for system in $systems; do
 for forcefield in $forcefields; do

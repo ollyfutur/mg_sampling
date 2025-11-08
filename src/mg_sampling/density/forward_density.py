@@ -1,6 +1,7 @@
 """
 Backmapping of density map from (an ensemble of) structures
 """
+import psutil
 
 import argparse
 from collections import Counter
@@ -16,7 +17,7 @@ import torch
 
 from tqdm import trange, tqdm
 
-from mg_sampling.density.utils import get_map_params, save_map, get_voxels, voxels_around
+from mg_sampling.density.utils import get_map_params, save_map, get_voxel_coords, voxels_around
 
 π = np.pi
 
@@ -67,29 +68,29 @@ RSHRINK = 1.1
 # Elastic atomic scattering factors of electrons for neutral atoms
 # and s up to 2.0 A^-1: as implemented in phenix
 ### SIGMA
-WEIGHT = {
-    "C": [0.0893, 0.2563, 0.7570, 1.0487, 0.3575],
-    "O": [0.0974, 0.2921, 0.6910, 0.6990, 0.2039],
-    "N": [0.1022, 0.3219, 0.7982, 0.8197, 0.1715],
-    "S": [0.2497, 0.5628, 1.3899, 2.1865, 0.7715],
-    "P": [0.2548, 0.6106, 1.4541, 2.3204, 0.8477],
-    "F": [0.1083, 0.3175, 0.6487, 0.5846, 0.1421],
-    "MG": [0.2314, 0.6866, 0.9677, 2.1882, 1.1339],
-    "K": [0.4115, 1.4031, 2.2784, 2.6742, 2.2162],
-    "NA": [0.2142, 0.6853, 0.7692, 1.6589, 1.4482],
-    "CL": [0.2443, 0.5397, 1.3919, 2.0197, 0.6621],
+SF_WEIGHT = {
+    "C": np.array([0.0893, 0.2563, 0.7570, 1.0487, 0.3575]),
+    "O": np.array([0.0974, 0.2921, 0.6910, 0.6990, 0.2039]),
+    "N": np.array([0.1022, 0.3219, 0.7982, 0.8197, 0.1715]),
+    "S": np.array([0.2497, 0.5628, 1.3899, 2.1865, 0.7715]),
+    "P": np.array([0.2548, 0.6106, 1.4541, 2.3204, 0.8477]),
+    "F": np.array([0.1083, 0.3175, 0.6487, 0.5846, 0.1421]),
+    "MG": np.array([0.2314, 0.6866, 0.9677, 2.1882, 1.1339]),
+    "K": np.array([0.4115, 1.4031, 2.2784, 2.6742, 2.2162]),
+    "NA": np.array([0.2142, 0.6853, 0.7692, 1.6589, 1.4482]),
+    "CL": np.array([0.2443, 0.5397, 1.3919, 2.0197, 0.6621]),
 }
-SIGMA = {
-    "C": [0.2465, 1.7100, 6.4094, 18.6113, 50.2523],
-    "O": [0.2067, 1.3815, 4.6943, 12.7105, 32.4726],
-    "N": [0.2451, 1.7481, 6.1925, 17.3894, 48.1431],
-    "S": [0.2681, 1.6711, 7.0267, 19.5377, 50.3888],
-    "P": [0.2908, 1.8740, 8.5176, 24.3434, 63.2996],
-    "F": [0.2057, 1.3439, 4.2788, 11.3932, 28.7881],
-    "MG": [0.3278, 2.2720, 10.9241, 39.2898, 101.9748],
-    "K": [0.3703, 3.3874, 13.1029, 68.9592, 194.4329],
-    "NA": [0.3334, 2.3446, 10.0830, 48.3037, 138.2700],
-    "CL": [0.2468, 1.5242, 6.1537, 16.6687, 42.3086],
+SF_SIGMA = {
+    "C": np.array([0.2465, 1.7100, 6.4094, 18.6113, 50.2523]),
+    "O": np.array([0.2067, 1.3815, 4.6943, 12.7105, 32.4726]),
+    "N": np.array([0.2451, 1.7481, 6.1925, 17.3894, 48.1431]),
+    "S": np.array([0.2681, 1.6711, 7.0267, 19.5377, 50.3888]),
+    "P": np.array([0.2908, 1.8740, 8.5176, 24.3434, 63.2996]),
+    "F": np.array([0.2057, 1.3439, 4.2788, 11.3932, 28.7881]),
+    "MG": np.array([0.3278, 2.2720, 10.9241, 39.2898, 101.9748]),
+    "K": np.array([0.3703, 3.3874, 13.1029, 68.9592, 194.4329]),
+    "NA": np.array([0.3334, 2.3446, 10.0830, 48.3037, 138.2700]),
+    "CL": np.array([0.2468, 1.5242, 6.1537, 16.6687, 42.3086]),
 }
 
 
@@ -104,9 +105,9 @@ SIGMA = {
 ## f(r) = pref * exp(-0.5 * invs2 * r**2)
 def get_fmod_param(ag: AtomGroup):
     pref = [
-        WEIGHT[a.type] * (π / (SIGMA[a.type] + a.tempfactor / 4)) ** 1.5 for a in ag
+        SF_WEIGHT[a.type] * (π / (SF_SIGMA[a.type] + a.tempfactor / 4)) ** 1.5 for a in ag
     ]
-    invs2 = [2 * π**2 / (SIGMA[a.type] + a.tempfactor / 4) for a in ag]
+    invs2 = [2 * π**2 / (SF_SIGMA[a.type] + a.tempfactor / 4) for a in ag]
     return np.array(pref), np.array(invs2)
 
 
@@ -115,23 +116,81 @@ def get_vdw_radii(ag: AtomGroup):
     vdw = [VDW_RADII[a.type] for a in ag]
     return np.array(vdw)
 
+def xyz_to_ijk(xyz, map_params):
+    dx = np.asarray(map_params['dx'])  # (3,)
+    x0 = np.asarray(map_params['x0'])  # (3,)
+    ijk = np.floor((xyz - x0) / dx).astype(int)  # (N, 3)
+    return ijk
+
+def ijk_to_xyz(ijk, map_params):
+    dx = np.asarray(map_params['dx'])
+    x0 = np.asarray(map_params['x0'])
+    xyz = x0 + ijk * dx
+    return xyz
+ 
+def get_model_map_olly(
+    ag: AtomGroup,
+    device: str = "cpu",
+    vox_indices=None,
+    cutoff: float = 4.0,
+    chunk_size: int | None = None,
+    **map_params,
+):
+    """
+    Returns (flattened) map at `vox_indices` from the atoms in `ag`.
+    """
+
+    nbin = torch.tensor(map_params['nbin']).to(torch.int).to(device)  # (3,)
+    dx = torch.tensor(map_params['dx']).to(torch.float).to(device)  # (3,)
+    x0 = torch.tensor(map_params['x0']).to(torch.float).to(device)  # (3,)
+    map_torch = torch.zeros(*map_params['nbin']).to(device)  # (X, Y, Z)
+
+    a_pref, a_invs2 = get_fmod_param(ag)
+    a_pref, a_invs2 = torch.tensor(a_pref).to(torch.float).to(device), torch.tensor(a_invs2).to(torch.float).to(device)
+
+    a_xyz = torch.tensor(ag.positions).to(torch.float).to(device)  # (N, 3)
+    a_ijk = torch.floor((a_xyz - x0) / dx).to(torch.int)  # (N, 3)
+
+    oi, oj, ok = torch.ceil(cutoff / dx).to(torch.int)
+    offsets = torch.arange(-oi, oi+1), torch.arange(-oj, oj+1), torch.arange(-ok, ok+1)
+    offset_kernel = torch.cartesian_prod(*offsets)  # 3 * (Δ, 3)
+    av_ijk = a_ijk[:, None] + offset_kernel[None, :]  # (N, Δ, 3)
+    av_xyz = x0 + av_ijk * dx
+    av_d2 = torch.sum((av_xyz - a_xyz[:, None])**2, dim=-1)  # (N, Δ)
+    av_dens = (av_d2 <= cutoff**2) * torch.sum(
+        a_pref[:, None, :] * torch.exp(-0.5 * a_invs2[:, None, :] * av_d2[:, :, None]),  # (N, Δ, 5)
+        dim=-1)  # (N, Δ)
+
+    v_i, v_j, v_k = av_ijk.movedim(2, 0)  # 3 * (N, Δ)
+    map_torch.index_put_((v_i, v_j, v_k), av_dens, accumulate=True)
+
+    return map
+
 
 def get_model_map(
     ag: AtomGroup,
     device: str = "cpu",
     vox_indices=None,
     cutoff: float = 4.0,
-    chunk_size: int = 100,
+    chunk_size: int | None = None,
     **map_params,
 ):
     """
-    Returns (flattened) map from the atoms in `ag`.
+    Returns (flattened) map at `vox_indices` from the atoms in `ag`.
     """
+
+    if chunk_size is None:
+        # target: chunk_size * natoms * 4 bytes ~ GPU/CPU memory
+        mem = torch.cuda.memory_reserved() - torch.cuda.memory_allocated() if device == 'cuda' else psutil.virtual_memory().available
+        chunk_size = int(mem // (4 * len(ag)) / 2) #  ÷2 to be safe
+        print(f"Detected memory avail ({device}): {mem * 1e-9:.1f} Gb")
+        print(f"Chunk size set to {chunk_size}")
+
 
     # convert to tensor and copy to device [nat, 3]
     pos_g = torch.tensor(ag.positions).to(torch.float).to(device)
     occ_g = torch.tensor(ag.occupancies).to(torch.float).to(device)
-    vox_g = torch.tensor(get_voxels(map_params, vox_indices)).to(torch.float).to(device)
+    vox_g = torch.tensor(get_voxel_coords(map_params, vox_indices)).to(torch.float).to(device)
 
     pref, invs2 = get_fmod_param(ag)
     pref, invs2 = (
@@ -218,8 +277,7 @@ def main():
     parser.add_argument(
         "--chunk-size",
         type=int,
-        default=1000,
-        help="(1000) Size of chunks to divide voxel computation",
+        help="(None) Size of chunks to divide voxel computation. If None will try to guess from available memory.",
     )
     parser.add_argument(
         "--ref", type=str, help="Reference structure used for voxel selection"
@@ -241,6 +299,9 @@ def main():
     )
     parser.add_argument(
         "--tempfactor", type=float, help="Force this temperature factor (B-factor)"
+    )
+    parser.add_argument(
+        "--method", type=str, default="olly"
     )
 
     args = parser.parse_args()
@@ -307,13 +368,16 @@ def main():
     assert vox_indices.dtype == int
     print("Final voxel number:", len(vox_indices))
 
+    get_model_fn = get_model_map_olly if args.method == "olly" else get_model_map
+    print(f"Using {args.method} method")
+
     tot_map = None
     for topfile in tqdm(args.input):
         u = mda.Universe(topfile)
         ag = u.select_atoms(args.sel)
         if args.tempfactor is not None:
             ag.tempfactors = args.tempfactor
-        model_map = get_model_map(
+        model_map = get_model_fn(
             ag,
             vox_indices=vox_indices,
             device=device,

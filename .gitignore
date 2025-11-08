@@ -21,7 +21,9 @@ fes.dat
 *.edr
 *.gro
 *.log
+*.map
 mdout.mdp
+*.mrc
 *.ndx
 *.out
 *.pdb

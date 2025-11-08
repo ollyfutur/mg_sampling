@@ -201,3 +201,14 @@ def demux(data_list, data_times=None, repindex_file='replica_index.xvg', rtol=1e
         demuxed_data.append(data_arr[reptemp, itime, :])
 
     return np.array(demuxed_data).swapaxes(0, 1)
+
+def read_performance(logfile):
+    """
+    Gets performance (hour/ns) from Gromacs log file.
+    """
+    with open(logfile) as f:
+        for line in f:
+            if line.startswith('Performance:'):
+                return float(line.split()[2])
+        else:
+            raise RuntimeError(f"Could not find performance in {logfile}")

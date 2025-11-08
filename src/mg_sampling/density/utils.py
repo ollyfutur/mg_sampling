@@ -3,6 +3,8 @@ Tools for density maps
 """
 
 import numpy as np
+from scipy.integrate import cumulative_trapezoid, trapezoid
+from scipy.interpolate import interp1d
 
 import mrcfile
 
@@ -11,11 +13,11 @@ from MDAnalysis import AtomGroup
 
 def get_map_params(mrc) -> dict:
     mrc_params = {
-        "map": [
+        "map": [ 
             int(mrc.header.mapc),
             int(mrc.header.mapr),
             int(mrc.header.maps),
-        ],  # data organization
+        ],  # data organization, 1 for x, 2 for y, 3 for z
         "nbin": [int(mrc.header.nx), int(mrc.header.ny), int(mrc.header.nz)],
         "nbin_tot": int(mrc.header.nx * mrc.header.ny * mrc.header.nz),
         "x0": [
@@ -30,13 +32,13 @@ def get_map_params(mrc) -> dict:
             float(mrc.voxel_size.z),
         ],
     }
-    # internally, reorder so that is always xyz format
+    # internally, reorder so that is always CRS <-> xyz
     axes_order = np.argsort(mrc_params["map"])
     mrc_params["filemap"] = mrc_params["map"]
-    mrc_params["map"] = [mrc_params["map"][k] for k in axes_order]  # should be [0, 1, 2]
+    mrc_params["map"] = [mrc_params["map"][k] for k in axes_order]
+    assert mrc_params["map"] == [1, 2, 3]
     mrc_params["nbin"] = [mrc_params["nbin"][k] for k in axes_order]
-    mrc_params["x0"] = [mrc_params["x0"][k] for k in axes_order]
-    mrc_params["dx"] = [mrc_params["dx"][k] for k in axes_order]
+
     # return dictionary
     return mrc_params
 
@@ -47,7 +49,7 @@ def save_map(path, map, map_params):
         mrc.voxel_size = map_params["dx"]
 
 
-def get_voxels(map_params, vox_indices=None):
+def get_voxel_coords(map_params, vox_indices=None):
     """
     Returns a list of voxel coordinates from `map_params`, possibly restricted to
     the indices in `vox_indices`.
@@ -79,9 +81,35 @@ def voxels_around(ag: AtomGroup, radius: float, map_params):
         bbox_ijk = tuple(map(np.ravel, np.meshgrid(*index_ranges, indexing="ij")))
         bbox_indices = np.ravel_multi_index(bbox_ijk, map_params["nbin"], order="F")
         # Distance check
-        bbox_xyz = get_voxels(map_params, vox_indices=bbox_indices)
+        bbox_xyz = get_voxel_coords(map_params, vox_indices=bbox_indices)
         mask = np.sum((bbox_xyz - a.position) ** 2, axis=-1) <= radius**2
         vox_indices.append(bbox_indices[mask])
     vox_indices = np.unique(np.concatenate(vox_indices))
 
     return vox_indices
+
+
+class DensityNorm:
+    """
+    Given two PDFs
+        x ~ p
+        y ~ q
+    Find f such that
+        f(y) ~ p
+    """
+    def __init__(self, p, q, xrange, yrange=None):
+
+        if yrange is None:
+            yrange = xrange
+
+        self.xrange = np.asarray(xrange)
+        self.yrange = np.asarray(yrange)
+        self.p = np.asarray(p) / trapezoid(p, xrange)
+        self.q = np.asarray(q) / trapezoid(q, yrange)
+        
+        self.invP = interp1d(cumulative_trapezoid(p, xrange, initial=0), xrange, fill_value='extrapolate')
+        self.Q = interp1d(yrange, cumulative_trapezoid(q, yrange, initial=0), fill_value='extrapolate')
+    
+    def __call__(self, x):
+        return self.invP(self.Q(x))
+        
