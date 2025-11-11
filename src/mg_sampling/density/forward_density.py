@@ -1,8 +1,10 @@
 """
 Backmapping of density map from (an ensemble of) structures
 """
+import os
 import psutil
-
+import time
+from functools import partial
 import argparse
 from collections import Counter
 
@@ -14,6 +16,7 @@ import MDAnalysis as mda
 from MDAnalysis import AtomGroup
 
 import torch
+import torch.multiprocessing as mp
 
 from tqdm import trange, tqdm
 
@@ -93,6 +96,15 @@ SF_SIGMA = {
     "CL": np.array([0.2468, 1.5242, 6.1537, 16.6687, 42.3086]),
 }
 
+def zero_pad_to(x, n):
+    pad_width = [(0, n - len(x))]
+    pad_width.extend([(0, 0) for _ in range(x.ndim - 1)])
+    return np.pad(x, pad_width)
+
+def batched(iter, n=1):
+    l = len(iter)
+    for i in range(0, l, n):
+        yield iter[i:min(i + n, l)]
 
 ## the Gaussian in density (real) space is the FT of scattering factor
 ## f(r) = A * (pi/B)**1.5 * exp(-pi**2/B*r**2)
@@ -128,47 +140,53 @@ def ijk_to_xyz(ijk, map_params):
     xyz = x0 + ijk * dx
     return xyz
  
-def get_model_map_olly(
+def atomgroup_to_map(
     ag: AtomGroup,
-    device: str = "cpu",
-    vox_indices=None,
     cutoff: float = 4.0,
+    device: str = "cpu",
     chunk_size: int | None = None,
     **map_params,
 ):
     """
-    Returns (flattened) map at `vox_indices` from the atoms in `ag`.
+    Return map from the atoms in `ag` on a grid provided with `map_params`.
     """
 
-    dx = torch.tensor(map_params['dx']).to(torch.float).to(device)  # (3,)
-    x0 = torch.tensor(map_params['x0']).to(torch.float).to(device)  # (3,)
-    map_torch = torch.zeros(*map_params['nbin']).to(device)  # (X, Y, Z)
+    dx = torch.tensor(map_params['dx'], dtype=torch.float, device=device)  # (3,)
+    x0 = torch.tensor(map_params['x0'], dtype=torch.float, device=device)  # (3,)
+    map = torch.zeros(*map_params['nbin'], dtype=torch.float, device=device)  # (X, Y, Z)
 
-    a_pref, a_invs2 = get_fmod_param(ag)
-    a_pref, a_invs2 = torch.tensor(a_pref).to(torch.float).to(device), torch.tensor(a_invs2).to(torch.float).to(device)
+    for _ag in batched(ag, chunk_size):
+        a_pref, a_invs2 = get_fmod_param(_ag)
+        a_pref = torch.tensor(a_pref, dtype=torch.float, device=device)
+        a_invs2 = torch.tensor(a_invs2, dtype=torch.float, device=device)
 
-    a_xyz = torch.tensor(ag.positions).to(torch.float).to(device)  # (N, 3)
-    a_occ = torch.tensor(ag.occupancies).to(torch.float).to(device)  # (N,)
+        a_xyz = torch.tensor(_ag.positions, dtype=torch.float, device=device)  # (N, 3)
+        a_occ = torch.tensor(_ag.occupancies, dtype=torch.float, device=device)  # (N,)
 
-    a_ijk = torch.floor((a_xyz - x0) / dx).to(torch.int)  # (N, 3)
+        a_ijk = torch.floor((a_xyz - x0) / dx).to(torch.int)  # (N, 3)
 
-    oi, oj, ok = torch.ceil(cutoff / dx).to(torch.int)
-    offsets = torch.arange(-oi, oi+1), torch.arange(-oj, oj+1), torch.arange(-ok, ok+1)
-    offset_kernel = torch.cartesian_prod(*offsets)  # 3 * (Δ, 3)
-    av_ijk = a_ijk[:, None] + offset_kernel[None, :]  # (N, Δ, 3)
-    av_xyz = x0 + av_ijk * dx
-    av_d2 = torch.sum((av_xyz - a_xyz[:, None])**2, dim=-1)  # (N, Δ)
-    av_dens = (av_d2 <= cutoff**2) * torch.sum(
-        a_pref[:, None, :] * torch.exp(-0.5 * a_invs2[:, None, :] * av_d2[:, :, None]),  # (N, Δ, 5)
-        dim=-1) * a_occ[:, None]  # (N, Δ)
+        oi, oj, ok = torch.ceil(cutoff / dx).to(torch.int)
+        offsets = [torch.arange(-o, o+1, device=device) for o in (oi, oj, ok)]
+        offset_kernel = torch.cartesian_prod(*offsets)  # 3 * (Δ, 3)
+        av_ijk = a_ijk[:, None] + offset_kernel[None, :]  # (N, Δ, 3)
+        del a_ijk
 
-    v_i, v_j, v_k = av_ijk.movedim(2, 0)  # 3 * (N, Δ)
-    map_torch.index_put_((v_i, v_j, v_k), av_dens, accumulate=True)
+        av_xyz = x0 + av_ijk * dx
+
+        av_d2 = torch.sum((av_xyz - a_xyz[:, None])**2, dim=-1)  # (N, Δ)
+        del av_xyz
+
+        av_dens = (av_d2 <= cutoff**2) * torch.sum(
+            a_pref[:, None, :] * torch.exp(-0.5 * a_invs2[:, None, :] * av_d2[:, :, None]),  # (N, Δ, 5)
+            dim=-1) * a_occ[:, None]  # (N, Δ)
+        del av_d2
+
+        av_i, av_j, av_k = av_ijk.moveaxis(-1, 0)
+        map.index_put_((av_i, av_j, av_k), av_dens, accumulate=True)
 
     return map
 
-
-def get_model_map(
+def get_model_map_old(
     ag: AtomGroup,
     device: str = "cpu",
     vox_indices=None,
@@ -245,6 +263,44 @@ def get_model_map(
     # and return map [on GPU]
     return map_sum
 
+def get_model_map(file,
+        sel="all",
+        cutoff=4.0,
+        tempfactor=None,
+        device='cpu',
+        verbose=False,
+        **map_params,
+    ):
+    """
+    Computes density from `file`.
+    """
+    if verbose:
+        pid = f"[{mp.current_process().name}]" if mp.current_process().daemon else ""
+        print(f"{pid} Computing density from:", file, flush=True)
+
+    t0 = time.time()
+    u = mda.Universe(file)
+    ag = u.select_atoms(sel)
+    if tempfactor is not None:
+        ag.tempfactors = tempfactor
+    atom_count = dict(Counter(ag.types))
+    t1 = time.time()
+    map = atomgroup_to_map(
+        ag,
+        cutoff=cutoff,
+        device=device,
+        **map_params,
+    )
+    t2 = time.time()
+
+    if verbose:
+        print(f"{pid} Done computing map.")
+        print("  Atoms:", atom_count)
+        print(f"  Loading: {t1 - t0:.2f} s")
+        print(f"  Map: {t2 - t1:.2f} s", flush=True)
+
+    return map
+
 def main():
     parser = argparse.ArgumentParser(
         prog="python forward_density.py",
@@ -258,7 +314,7 @@ def main():
         help="('all') MDAnalysis selection string",
     )
     parser.add_argument("--map", type=str, help="Input MRC map")
-    parser.add_argument("-o", "--out", type=str, help="(map_out.mrc) Output MRC map")
+    parser.add_argument("-o", "--out", type=str, default="map_out.mrc", help="(map_out.mrc) Output MRC map")
     # parser.add_argument(
     # "--threshold", type=float, metavar="TH", default=-10000.0, help="map thresold"
     # )
@@ -278,7 +334,7 @@ def main():
     parser.add_argument(
         "--chunk-size",
         type=int,
-        help="(None) Size of chunks to divide voxel computation. If None will try to guess from available memory.",
+        help="(None) Size of chunks (number of atoms) to divide computation. If None will try to guess from available memory.",
     )
     parser.add_argument(
         "--ref", type=str, help="Reference structure used for voxel selection"
@@ -302,7 +358,13 @@ def main():
         "--tempfactor", type=float, help="Force this temperature factor (B-factor)"
     )
     parser.add_argument(
-        "--method", type=str, default="olly"
+        "-p", "--processes", type=int, default=0, help="Number of processes for multiprocessing."
+    )
+    parser.add_argument(
+        "-v", "--verbose", action='store_true', help="More info"
+    )
+    parser.add_argument(
+        "--progress", action='store_true', help="Display progress bar"
     )
 
     args = parser.parse_args()
@@ -366,41 +428,62 @@ def main():
             print("  Selection:", vox_sel)
             print("  Radius:", vox_r)
 
-    assert vox_indices.dtype == int
     print("Final voxel number:", len(vox_indices))
 
-    get_model_fn = get_model_map_olly if args.method == "olly" else get_model_map
-    print(f"Using {args.method} method")
+    if args.chunk_size is None:
+        mem = torch.cuda.memory.mem_get_info()[0] if device == 'cuda' else psutil.virtual_memory().available
+        if args.verbose:
+            print(f"Detected total of free memory: {mem*1e-9:.2f} Gb")
+        # Heuristic
+        kernel_size = np.prod(2 * np.ceil(args.cutoff / np.asarray(map_params['dx'])) + 1)
+        chunk_size = 2**int(np.log2(mem)
+            - np.log2(kernel_size) 
+            - np.log2(torch.float.itemsize) 
+            - np.log2(max(1, args.processes)) 
+            - np.log2(10))
+    else:
+        chunk_size = args.chunk_size
+    print(f"Using maximum chunk size of {chunk_size}")
 
-    tot_map = None
-    for topfile in tqdm(args.input):
-        u = mda.Universe(topfile)
-        ag = u.select_atoms(args.sel)
-        if args.tempfactor is not None:
-            ag.tempfactors = args.tempfactor
-        model_map = get_model_fn(
-            ag,
-            vox_indices=vox_indices,
-            device=device,
-            cutoff=args.cutoff,
-            chunk_size=args.chunk_size,
-            **map_params,
-        )
-        print("Computing density from:", topfile)
-        print("  Atoms:", dict(Counter(ag.types)))
-        if tot_map is None:
-            tot_map = model_map
-        else:
-            tot_map += model_map
+    tot_map = torch.zeros(map_params['nbin']).to(device)
+
+    _get_model_map = partial(get_model_map,
+        sel=args.sel,
+        tempfactor=args.tempfactor,
+        vox_indices=vox_indices,
+        device=device,
+        cutoff=args.cutoff,
+        chunk_size=chunk_size,
+        verbose=args.verbose,
+        **map_params,
+    )
+
+    if args.processes > 0:
+        mp.set_start_method('spawn')
+        with mp.Pool(args.processes) as pool:
+            iter = pool.imap(_get_model_map, args.input)
+            if args.progress:
+                iter = tqdm(iter)
+            for i, map in enumerate(iter):
+                tot_map += map
+                if args.verbose:
+                    print(f"Accumulating model map {i}/{len(args.input)}", flush=True)
+    else:
+        for file in args.input:
+            _add_model_map(file)
+
     print("Averaging", len(args.input), "models.")
     tot_map /= len(args.input)
+    tot_map = tot_map.cpu().numpy()
 
-    if args.out is not None:
-        _map = np.zeros(map_params["nbin_tot"], dtype=np.float32)
-        _map[vox_indices] = tot_map.cpu().numpy()
-        _map = _map.reshape(map_params["nbin"])
-        save_map(args.out, _map, map_params)
-        print("Output file:", args.out)
+    save_map(args.out, tot_map, map_params)
+    print("Output file:", args.out)
+    
+    # _map = np.zeros(map_params["nbin_tot"], dtype=np.float32)
+    # _map[vox_indices] = tot_map
+    # _map = _map.reshape(map_params["nbin"], order="F")
+    # save_map(args.out, _map, map_params)
+    # print("Output file:", args.out)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,6 @@
 #SBATCH --qos=boost_qos_dbg
 
 target=$1
-
-srun forward_density $target/aligned_*.pdb --sel 'not nucleic and not type DUMMY' --map emd_42499.map -o $target/without_rna.mrc --ref 9cbu.pdb --vox-around 5 'not type H and nucleic and not resid 63-88 229-245 284-295 332-335 364-402' --tempfactor 0 --chunk-size 500000
-
-srun forward_density $target/aligned_*.pdb --sel 'not type DUMMY' --map emd_42499.map -o $target/with_rna.mrc --ref 9cbu.pdb --vox-around 5 'not type H and nucleic and not resid 63-88 229-245 284-295 332-335 364-402' --tempfactor 0 --chunk-size 500000
+srun forward_density $target/aligned_*.pdb --sel 'nucleic and not type H' --map emd_42499.map -o $target/rna.mrc --tempfactor 0 --processes 6 -v
+srun forward_density $target/aligned_*.pdb --sel 'name OW' --map emd_42499.map -o $target/water.mrc --tempfactor 0 --processes 6 -v
+srun forward_density $target/aligned_*.pdb --sel 'name MG NA CL' --map emd_42499.map -o $target/ions.mrc --tempfactor 0 --processes 6 -v

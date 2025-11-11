@@ -44,6 +44,9 @@ def get_map_params(mrc) -> dict:
 
 
 def save_map(path, map, map_params):
+    # mrcfile expects numpy array with SRC convention
+    # i.e. map[k, j, i] (kji <-> zyx)
+    map = map.transpose((2, 1, 0))
     with mrcfile.new(path, overwrite=True) as mrc:
         mrc.set_data(map)
         mrc.voxel_size = map_params["dx"]
