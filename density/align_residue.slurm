@@ -10,7 +10,9 @@
 #SBATCH --qos=boost_qos_dbg
 
 # sims="plain_md_* replex_*"
-sims="replex_7ez0_mMg_tip3p_0"
+# sims="replex_7ez0_noion_mMg_tip3p_*"
+# sims="plain_md_7ez0_nMg_tip3p"
+sims="plain_md_7ez0_nMg_tip3p_soft plain_md_7ez0_noion_nMg_tip3p"
 
 for sim in $sims; do
    mkdir -p $sim/aligned_residue

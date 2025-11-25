@@ -11,6 +11,7 @@
 #SBATCH --qos=boost_qos_dbg
 
 target=$1
-srun forward_density $target/aligned_*.pdb --sel 'nucleic and not type H' --map emd_42499.map -o $target/rna.mrc --tempfactor 0 --processes 6 -v
-srun forward_density $target/aligned_*.pdb --sel 'name OW' --map emd_42499.map -o $target/water.mrc --tempfactor 0 --processes 6 -v
-srun forward_density $target/aligned_*.pdb --sel 'name MG NA CL' --map emd_42499.map -o $target/ions.mrc --tempfactor 0 --processes 6 -v
+# srun forward_density $target/aligned_*.pdb --sel 'all' --map emd_42499.map -o $target/all.mrc --tempfactor 0 --processes 6 -v --frame-out $target/all.npy --vox-around 5 "nucleic" --ref 9cbu.pdb --vox-index-out $target/vox_index.npy
+srun forward_density $target/aligned_*.pdb --sel 'nucleic' --map emd_42499.map -o $target/rna.mrc --tempfactor 0 --processes 6 -v --chunk-size 32768
+# srun forward_density $target/aligned_*.pdb --sel 'name MG' --map emd_42499.map -o $target/mg.mrc --tempfactor 0 --processes 6 -v
+# srun forward_density $target/aligned_*.pdb --sel 'name NA' --map emd_42499.map -o $target/na.mrc --tempfactor 0 --processes 6 -v

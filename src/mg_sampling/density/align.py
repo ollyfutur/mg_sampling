@@ -19,6 +19,7 @@ from MDAnalysis.analysis.distances import distance_array
 
 from tqdm import tqdm
 
+
 def reorder_residue_atoms(ag):
     """
     Reorder atoms in `ag` by resindex, then by name.
@@ -37,8 +38,8 @@ def check_alignable(mob_align, ref_align):
         warnings.warn(
             "Mobile and reference alignment selections have the same number of atoms but different "
             "atom names, please make sure this is expected! "
-            "Mob: " + " ".join(mob_align.names[diff][:10]) + "…"
-            "Ref: " + " ".join(ref_align.names[diff][:10]) + "…"
+            "Mob: " + " ".join(mob_align.names[diff][:10]) + "… "
+            "Ref: " + " ".join(ref_align.names[diff][:10]) + "… "
         )
 
 def wrap_around(ag1, position):
@@ -77,23 +78,22 @@ def global_align(
     mobile = mobile.atoms
     reference = reference.atoms
 
-    if reorder:
-        mobile = reorder_residue_atoms(mobile)
-        reference = reorder_residue_atoms(reference)
-
     ref_align_sel = align_sel if ref_align_sel is None else ref_align_sel
 
     mob_align = mobile.select_atoms(align_sel, sorted=False)
     ref_align = reference.select_atoms(ref_align_sel, sorted=False)
+    if reorder:
+        mob_align = reorder_residue_atoms(mob_align)
+        ref_align = reorder_residue_atoms(ref_align)
+
     check_alignable(mob_align, ref_align)
 
+    mob_out = mobile.select_atoms(out_sel, sorted=False)
     if out_radius is not None:
         # NB: `around` is exclusive
-        mob_out = mobile.select_atoms(
-            f"(around {out_radius} ({align_sel})) or ({align_sel})", sorted=False, periodic=False)
-        mob_out = mob_out.select_atoms(f"{out_sel}", sorted=False)
-    else:
-        mob_out = mobile.select_atoms(out_sel, sorted=False)
+        mob_out = mob_out.select_atoms(
+            f"group mob_align or around {out_radius} group mob_align", mob_align=mob_align, sorted=False, periodic=False)
+
     _ = align.alignto(mob_align, ref_align, subselection=mob_out)
 
     return mob_out

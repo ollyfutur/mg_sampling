@@ -16,6 +16,7 @@ dependencies = [
   "dask",
   "bussilab",
   "pdbfixer @ git+https://github.com/openmm/pdbfixer.git@29fcf15f95f19f92211283fefdd0a086da37d646",
+  "mutual_information @ git+https://github.com/ollyfutur/mutual_information",
   "nbconvert",
   "mrcfile",
   "torch",

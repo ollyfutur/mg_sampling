@@ -1,26 +1,27 @@
 """
 Backmapping of density map from (an ensemble of) structures
 """
-import os
-import psutil
-import time
-from functools import partial
 import argparse
 from collections import Counter
+from functools import partial
+import os
+from pathlib import Path
+import psutil
+import time
 
 import numpy as np
+
+import torch
+import torch.multiprocessing as mp
 
 import mrcfile
 
 import MDAnalysis as mda
 from MDAnalysis import AtomGroup
 
-import torch
-import torch.multiprocessing as mp
-
 from tqdm import trange, tqdm
 
-from mg_sampling.density.utils import get_map_params, save_map, get_voxel_coords, voxels_around
+from mg_sampling.density.utils import get_map_params, save_map, get_voxel_coords, voxels_around, flatmap_to_dense
 
 π = np.pi
 
@@ -157,8 +158,8 @@ def atomgroup_to_map(
 
     for _ag in batched(ag, chunk_size):
         a_pref, a_invs2 = get_fmod_param(_ag)
-        a_pref = torch.tensor(a_pref, dtype=torch.float, device=device)
-        a_invs2 = torch.tensor(a_invs2, dtype=torch.float, device=device)
+        a_pref = torch.tensor(a_pref, dtype=torch.float, device=device)  # (N, 5)
+        a_invs2 = torch.tensor(a_invs2, dtype=torch.float, device=device)  # (N, 5)
 
         a_xyz = torch.tensor(_ag.positions, dtype=torch.float, device=device)  # (N, 3)
         a_occ = torch.tensor(_ag.occupancies, dtype=torch.float, device=device)  # (N,)
@@ -171,7 +172,7 @@ def atomgroup_to_map(
         av_ijk = a_ijk[:, None] + offset_kernel[None, :]  # (N, Δ, 3)
         del a_ijk
 
-        av_xyz = x0 + av_ijk * dx
+        av_xyz = x0 + av_ijk * dx  # (N, Δ, 3)
 
         av_d2 = torch.sum((av_xyz - a_xyz[:, None])**2, dim=-1)  # (N, Δ)
         del av_xyz
@@ -189,13 +190,13 @@ def atomgroup_to_map(
 def get_model_map_old(
     ag: AtomGroup,
     device: str = "cpu",
-    vox_indices=None,
+    vox_index=None,
     cutoff: float = 4.0,
     chunk_size: int | None = None,
     **map_params,
 ):
     """
-    Returns (flattened) map at `vox_indices` from the atoms in `ag`.
+    Returns (flattened) map at `vox_index` from the atoms in `ag`.
     """
 
     if chunk_size is None:
@@ -209,7 +210,7 @@ def get_model_map_old(
     # convert to tensor and copy to device [nat, 3]
     pos_g = torch.tensor(ag.positions).to(torch.float).to(device)
     occ_g = torch.tensor(ag.occupancies).to(torch.float).to(device)
-    vox_g = torch.tensor(get_voxel_coords(map_params, vox_indices)).to(torch.float).to(device)
+    vox_g = torch.tensor(get_voxel_coords(map_params, vox_index)).to(torch.float).to(device)
 
     pref, invs2 = get_fmod_param(ag)
     pref, invs2 = (
@@ -266,6 +267,8 @@ def get_model_map_old(
 def get_model_map(file,
         sel="all",
         cutoff=4.0,
+        outshape='flat',
+        vox_index=None,
         tempfactor=None,
         device='cpu',
         verbose=False,
@@ -273,6 +276,8 @@ def get_model_map(file,
     ):
     """
     Computes density from `file`.
+    Returns either a 3-dimensional map (`outshape='map'`) or a flat array
+    corresponding to `vox_index`.
     """
     if verbose:
         pid = f"[{mp.current_process().name}]" if mp.current_process().daemon else ""
@@ -293,13 +298,21 @@ def get_model_map(file,
     )
     t2 = time.time()
 
+    if pid.endswith("1]"):
+        print(torch.cuda.memory.memory_summary())
     if verbose:
         print(f"{pid} Done computing map.")
         print("  Atoms:", atom_count)
         print(f"  Loading: {t1 - t0:.2f} s")
         print(f"  Map: {t2 - t1:.2f} s", flush=True)
 
-    return map
+    if outshape == 'map':
+        return map
+    elif outshape == 'flat':
+        return map.permute(2, 1, 0).flatten()[vox_index if vox_index is not None else slice(None)]
+    else:
+        raise ValueError("`outshape` should be 'map' or 'flat'")
+        
 
 def main():
     parser = argparse.ArgumentParser(
@@ -311,18 +324,16 @@ def main():
         "--sel",
         type=str,
         default="not type H",
-        help="('all') MDAnalysis selection string",
+        help="('all') MDAnalysis selection string for atoms that will be backmapped.",
     )
     parser.add_argument("--map", type=str, help="Input MRC map")
-    parser.add_argument("-o", "--out", type=str, default="map_out.mrc", help="(map_out.mrc) Output MRC map")
-    # parser.add_argument(
-    # "--threshold", type=float, metavar="TH", default=-10000.0, help="map thresold"
-    # )
+    parser.add_argument("-o", "--average-out", type=str, default="map_out.mrc", help="(map_out.mrc) Output average MRC map (*.mrc)")
+    parser.add_argument("--frame-out", type=str, help="Output sparse map for each input structure/frame as a numpy (*.npy) flat array corresponding to selected voxels.")
     parser.add_argument(
         "--cutoff",
         type=float,
         default=4.0,
-        help="(4.0) Cutoff distance for Gaussians (nm)",
+        help="(4.0) Cutoff distance from atoms for Gaussians (nm)",
     )
     parser.add_argument(
         "--device",
@@ -334,12 +345,13 @@ def main():
     parser.add_argument(
         "--chunk-size",
         type=int,
-        help="(None) Size of chunks (number of atoms) to divide computation. If None will try to guess from available memory.",
+        help="(None) Size of chunks (number of atoms) to divide computation. If None will try to guess from available memory. Try a smaller number if you get CUDA out-of-memory errors.",
     )
     parser.add_argument(
         "--ref", type=str, help="Reference structure used for voxel selection"
     )
-    parser.add_argument("--vox-indices", type=str, help="Voxel indices file name")
+    parser.add_argument("--vox-index", type=str, help="Input voxel index NumPy file")
+    parser.add_argument("--vox-index-out", type=str, default="vox_index.npy", help="Output voxel index NumPy file")
     parser.add_argument(
         "--vox-around",
         nargs=2,
@@ -355,7 +367,7 @@ def main():
         action="append",
     )
     parser.add_argument(
-        "--tempfactor", type=float, help="Force this temperature factor (B-factor)"
+        "--tempfactor", type=float, help="Enforce this temperature factor (B-factor)"
     )
     parser.add_argument(
         "-p", "--processes", type=int, default=0, help="Number of processes for multiprocessing."
@@ -391,11 +403,14 @@ def main():
         print("    nbin:", map_params["nbin"])
         print("    nbin_tot:", map_params["nbin_tot"])
 
-    if args.vox_indices is not None:
-        vox_indices = np.load(args.vox_indices)
-        print("Voxel index file:", args.vox_indices)
+    if args.vox_index is None and args.vox_around is None:
+        vox_index = np.arange(map_params["nbin_tot"])
     else:
-        vox_indices = np.array([], dtype=int)
+        vox_index = np.array([], dtype=int)
+
+    if args.vox_index is not None:
+        vox_index = np.load(args.vox_index)
+        print(f"Selecting {len(vox_index)} from voxel index file:", args.vox_index)
 
     if args.vox_around is not None:
         if args.ref is None:
@@ -406,7 +421,7 @@ def main():
             vox_r = float(vox_r)
             vox_ag = vox_ref.select_atoms(vox_sel)
             _inds = voxels_around(vox_ag, vox_r, map_params)
-            vox_indices = np.union1d(vox_indices, _inds)
+            vox_index = np.union1d(vox_index, _inds)
             print(f"Selecting {len(_inds)} voxels around:")
             print("  Reference:", args.ref)
             print("  Selection:", vox_sel)
@@ -422,13 +437,15 @@ def main():
             vox_ag = vox_ref.select_atoms(vox_sel)
             _inds = voxels_around(vox_ag, vox_r, map_params)
             assert _inds.dtype == int
-            vox_indices = np.setdiff1d(vox_indices, _inds)
+            vox_index = np.setdiff1d(vox_index, _inds)
             print(f"Excluding {len(_inds)} voxels around:")
             print("  Reference:", args.ref)
             print("  Selection:", vox_sel)
             print("  Radius:", vox_r)
 
-    print("Final voxel number:", len(vox_indices))
+    print("Final voxel number:", len(vox_index))
+    np.save(args.vox_index_out, vox_index)
+    print("Saved voxel index file:", args.vox_index_out)
 
     if args.chunk_size is None:
         mem = torch.cuda.memory.mem_get_info()[0] if device == 'cuda' else psutil.virtual_memory().available
@@ -440,47 +457,57 @@ def main():
             - np.log2(kernel_size) 
             - np.log2(torch.float.itemsize) 
             - np.log2(max(1, args.processes)) 
-            - np.log2(10))
+            - np.log2(18))
     else:
         chunk_size = args.chunk_size
     print(f"Using maximum chunk size of {chunk_size}")
 
-    tot_map = torch.zeros(map_params['nbin']).to(device)
-
+    vox_index = torch.tensor(vox_index, dtype=torch.int64, device=device)
     _get_model_map = partial(get_model_map,
         sel=args.sel,
         tempfactor=args.tempfactor,
-        vox_indices=vox_indices,
+        vox_index=vox_index,
         device=device,
         cutoff=args.cutoff,
         chunk_size=chunk_size,
         verbose=args.verbose,
+        outshape='flat',
         **map_params,
     )
+
+    def run(iter):
+        tot_map = torch.zeros(len(vox_index), dtype=torch.float32, device=device)
+        if args.progress:
+            iter = tqdm(iter)
+        for i, map in enumerate(iter):
+            if args.frame_out is not None:
+                outfile = Path(args.frame_out)
+                outfile = outfile.with_stem(f"{outfile.stem}_{i}").with_suffix(".npy")
+                np.save(outfile, map.cpu().numpy())
+                print(f"Saving frame {i}: {outfile}")
+            tot_map += map
+            if args.verbose:
+                print(f"Accumulating model map {i}/{len(args.input)}", flush=True)
+        return tot_map
 
     if args.processes > 0:
         mp.set_start_method('spawn')
         with mp.Pool(args.processes) as pool:
             iter = pool.imap(_get_model_map, args.input)
-            if args.progress:
-                iter = tqdm(iter)
-            for i, map in enumerate(iter):
-                tot_map += map
-                if args.verbose:
-                    print(f"Accumulating model map {i}/{len(args.input)}", flush=True)
+            tot_map = run(iter)
     else:
-        for file in args.input:
-            _add_model_map(file)
+        iter = args.input
+        tot_map = run(iter)
 
     print("Averaging", len(args.input), "models.")
     tot_map /= len(args.input)
-    tot_map = tot_map.cpu().numpy()
+    tot_map = flatmap_to_dense(tot_map.cpu().numpy(), vox_index.cpu().numpy(), map_params)
 
-    save_map(args.out, tot_map, map_params)
-    print("Output file:", args.out)
+    save_map(args.average_out, tot_map, map_params)
+    print("Output file:", args.average_out)
     
     # _map = np.zeros(map_params["nbin_tot"], dtype=np.float32)
-    # _map[vox_indices] = tot_map
+    # _map[vox_index] = tot_map
     # _map = _map.reshape(map_params["nbin"], order="F")
     # save_map(args.out, _map, map_params)
     # print("Output file:", args.out)

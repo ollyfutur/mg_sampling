@@ -1,5 +1,9 @@
 import logging
 
+from collections import namedtuple
+from dataclasses import dataclass
+import inspect
+
 import numpy as np
 import pandas as pd
 import re
@@ -56,6 +60,75 @@ def bootstrap(*inputs, func, n_resample=20, weights=None):
 
     return mean, stderr
 
+
+
+ConfidenceInterval = namedtuple("ConfidenceInterval", ["low", "high"])
+
+@dataclass
+class BootstrapResult:
+    """Result object returned by `scipy.stats.bootstrap`.
+
+    Attributes
+    ----------
+    confidence_interval : ConfidenceInterval
+        The bootstrap confidence interval as an instance of
+        `collections.namedtuple` with attributes `low` and `high`.
+    bootstrap_distribution : ndarray
+        The bootstrap distribution, that is, the value of `statistic` for
+        each resample. The last dimension corresponds with the resamples
+        (e.g. ``res.bootstrap_distribution.shape[-1] == n_resamples``).
+    standard_error : float or ndarray
+        The bootstrap standard error, that is, the sample standard
+        deviation of the bootstrap distribution.
+
+    """
+    confidence_interval: ConfidenceInterval
+    bootstrap_distribution: np.ndarray
+    standard_error: float | np.ndarray
+
+def bayesian_bootstrap(data, statistic, *, alpha=4, n_resamples=200, n_blocks=1, rng=None, confidence_level=0.95):
+    """
+    Perform bayesian bootstrap on a sequence of observations `data` for a given `statistic`.
+    A weight vector for each observation of `data` is drawn from a Dirichlet distribution
+    of dimension `len(data)` with parameter `alpha`. If `statistic` does not accept the `weights`
+    keyword argument, two-level sampling is performed.
+
+    Optionally, block analysis can be performed by setting `n_blocks`. The sequence
+    `data` will be divided in blocks of approximately equal size. Block will be weighted
+    from a Dirichlet distribution of dimension `n_blocks` with parameter `alpha`, and
+    observations within each block will be weighted as above. Note that `n_blocks = 1`
+    is equivalent to `n_blocks = len(data)`.
+    """
+    rng = np.random.default_rng(rng)
+    accepts_weights = 'weights' in inspect.signature(statistic).parameters
+    q_l, q_u = (1 - confidence_level) / 2, confidence_level / 2
+
+    n_samples = len(data)
+
+    block_size, extras = divmod(n_samples, n_blocks)
+    block_sizes = extras * [block_size + 1] + (n_blocks - extras) * [block_size]
+
+    block_weights = rng.dirichlet(alpha * np.ones(n_blocks), n_resamples)
+    weights = np.concatenate([
+        block_weights[:, k, None] * rng.dirichlet(alpha * np.ones(block_sizes[k]), n_resamples)
+        for k in range(n_blocks)
+    ], axis=1)
+    
+    if accepts_weights:
+        res = [statistic(data, weights=weights[i]) for i in range(n_resamples)]
+    else:
+        res = []
+        for i in range(n_resamples):
+            _data = [data[j] for j in np.random.choice(n_samples, size=n_samples, p=weights[i])]
+            res.append(statistic(_data))
+
+    res = np.asarray(res)
+
+    ci_l, ci_u = np.quantile(res, (q_l, q_u))
+
+    return BootstrapResult(confidence_interval=ConfidenceInterval(ci_l, ci_u),
+                           bootstrap_distribution=res,
+                           standard_error=np.std(res, ddof=1, axis=-1))
 
 def to_wsv(df: pd.DataFrame, path):
     with open(path, 'w') as f:

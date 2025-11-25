@@ -32,16 +32,8 @@ def get_map_params(mrc) -> dict:
             float(mrc.voxel_size.z),
         ],
     }
-    # internally, reorder so that is always CRS <-> xyz
-    axes_order = np.argsort(mrc_params["map"])
-    mrc_params["filemap"] = mrc_params["map"]
-    mrc_params["map"] = [mrc_params["map"][k] for k in axes_order]
-    assert mrc_params["map"] == [1, 2, 3]
-    mrc_params["nbin"] = [mrc_params["nbin"][k] for k in axes_order]
 
-    # return dictionary
     return mrc_params
-
 
 def save_map(path, map, map_params):
     # mrcfile expects numpy array with SRC convention
@@ -50,7 +42,6 @@ def save_map(path, map, map_params):
     with mrcfile.new(path, overwrite=True) as mrc:
         mrc.set_data(map)
         mrc.voxel_size = map_params["dx"]
-
 
 def get_voxel_coords(map_params, vox_indices=None):
     """
@@ -91,6 +82,16 @@ def voxels_around(ag: AtomGroup, radius: float, map_params):
 
     return vox_indices
 
+def indices_to_mask(vox_indices, map_params):
+    i, j, k = np.unravel_index(vox_indices, map_params['nbin'], order='F')
+    mask = np.zeros(map_params['nbin'], dtype=bool)
+    mask[i, j, k] = True
+    return mask
+
+def flatmap_to_dense(flatmap, vox_indices, map_params):
+    map = np.zeros(map_params['nbin_tot'], dtype=flatmap.dtype)
+    map[vox_indices] = flatmap
+    return map.reshape(map_params['nbin'], order='F')
 
 class DensityNorm:
     """

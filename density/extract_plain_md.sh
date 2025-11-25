@@ -1,6 +1,6 @@
 # Extract trajectory frames
 
-systems="7ez0"
+systems="7ez0_noion"
 forcefields="nMg_tip3p"
 
 for system in $systems; do

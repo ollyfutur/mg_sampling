@@ -1,0 +1,9 @@
+MOLINFO STRUCTURE=solute.pdb
+
+rna: GROUP ATOMS=@nucleic
+subset: GROUP ATOMS={@mda:{name P C1' C2}}
+ions: GROUP ATOMS=@ions
+
+WHOLEMOLECULES ENTITY0=rna
+WRAPAROUND ATOMS=ions AROUND=subset
+DUMPATOMS FILE=wrapped.xtc ATOMS=@allatoms

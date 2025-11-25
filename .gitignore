@@ -25,6 +25,7 @@ fes.dat
 mdout.mdp
 *.mrc
 *.ndx
+*.npy
 *.out
 *.pdb
 *.pdf
