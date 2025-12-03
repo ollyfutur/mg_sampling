@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import argparse
+
+import MDAnalysis as mda
 import numpy as np
 
 from mg_sampling.analysis import IonNucleicAnalysis
-import MDAnalysis as mda
 
 def main():
     parser = argparse.ArgumentParser(

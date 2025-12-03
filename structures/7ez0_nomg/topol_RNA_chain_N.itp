@@ -1,19 +1,19 @@
 ;
-;	File 'topol.top' was generated
+;	File 'topol_RNA_chain_N.itp' was generated
 ;	By user: olanguin (127511)
 ;	On host: login05.leonardo.local
-;	At date: Thu Nov 27 18:03:53 2025
+;	At date: Wed Nov 26 15:56:27 2025
 ;
-;	This is a standalone topology file
+;	This is a include topology file
 ;
 ;	Created by:
 ;	              :-) GROMACS - gmx pdb2gmx, 2023.5-plumed_2.10b (-:
 ;	
 ;	Executable:   /leonardo/pub/userexternal/olanguin/install/gromacs-2023.5-plumed-2.10b/bin/gmx_mpi
 ;	Data prefix:  /leonardo/pub/userexternal/olanguin/install/gromacs-2023.5-plumed-2.10b
-;	Working dir:  /leonardo_work/Sis25_bussi/Olivier/mg_sampling/structures/7ez0_nomg
+;	Working dir:  /leonardo_work/Sis25_bussi/Olivier/mg_sampling/structures/7ez0_zeroion
 ;	Command line:
-;	  gmx_mpi pdb2gmx -f 7ez0_fixed.pdb -ff amber14sb_mMg_tip3p -water tip3p -noh
+;	  gmx_mpi pdb2gmx -f 7ez0_fixed.pdb -ff amber14sb -water tip3p -noh
 ;	Force field data was read from:
 ;	/leonardo_work/Sis25_bussi/Olivier/mg_sampling/forcefields
 ;
@@ -22,9 +22,6 @@
 ;	force field must either be present in the current directory, or the location
 ;	specified in the GMXLIB path variable or with the 'include' mdp file option.
 ;
-
-; Include forcefield parameters
-#include "/leonardo_work/Sis25_bussi/Olivier/mg_sampling/forcefields/amber14sb_mMg_tip3p.ff/forcefield.itp"
 
 [ moleculetype ]
 ; Name            nrexcl
@@ -120035,29 +120032,6 @@ RNA_chain_N         3
 
 ; Include Position restraint file
 #ifdef POSRES
-#include "posre.itp"
+#include "posre_RNA_chain_N.itp"
 #endif
 
-; Include water topology
-#include "/leonardo_work/Sis25_bussi/Olivier/mg_sampling/forcefields/amber14sb_mMg_tip3p.ff/tip3p.itp"
-
-#ifdef POSRES_WATER
-; Position restraint for each water oxygen
-[ position_restraints ]
-;  i funct       fcx        fcy        fcz
-   1    1       1000       1000       1000
-#endif
-
-; Include topology for ions
-#include "/leonardo_work/Sis25_bussi/Olivier/mg_sampling/forcefields/amber14sb_mMg_tip3p.ff/ions.itp"
-
-[ system ]
-; Name
-Protein in water
-
-[ molecules ]
-; Compound        #mols
-RNA_chain_N         1
-SOL         85526
-NA               453
-CL               67
