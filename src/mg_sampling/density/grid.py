@@ -114,6 +114,14 @@ class Grid(gridData.Grid):
     def shape(self):
         return self.grid.shape
 
+    @property
+    def size(self):
+        return self.grid.size
+
+    @property
+    def grid_params(self):
+        return dict(shape=self.shape, edges=self.edges, origin=self.origin, delta=self.delta)
+
     def to_sparse(self, *, vox_indices=None, mask=None):
         if vox_indices is None and mask is None:
             raise ValueError("Must provide either `vox_indices` or a boolean `mask`")
@@ -122,6 +130,9 @@ class Grid(gridData.Grid):
         data = self.grid.reshape(-1)[vox_indices]
         return SparseGrid(data, vox_indices, self.edges, metadata=self.metadata)
 
+    def to_dense(self):
+        return self
+
 
 class SparseGrid(object):
     """
@@ -129,7 +140,25 @@ class SparseGrid(object):
     values for a set of voxel indices.
     """
 
-    def __init__(self, data, vox_indices, edges, metadata=None):
+    def __init__(
+        self,
+        data,
+        vox_indices,
+        edges=None,
+        shape=None,
+        origin=None,
+        delta=None,
+        metadata=None,
+    ):
+        if edges is None:
+            if shape is None or origin is None or delta is None:
+                raise ValueError(
+                    "To set up SparseGrid either `edges` or `shape`/`origin`/`delta` must be provided."
+                )
+            edges = [
+                x0 + (np.arange(n + 1) - 0.5) * dx
+                for x0, n, dx in zip(origin, shape, delta)
+            ]
         self.data = np.asarray(data)
         self.vox_indices = np.asarray(vox_indices)
         self.edges = edges

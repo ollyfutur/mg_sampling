@@ -2,12 +2,9 @@
 Local or global alignment.
 """
 
-import sys
 import warnings
 import argparse
 from pathlib import Path
-from functools import partial
-
 import numpy as np
 
 import MDAnalysis as mda
@@ -19,6 +16,30 @@ from MDAnalysis.analysis.distances import distance_array
 
 from tqdm import tqdm
 
+STANDARD_NAMES = {
+    "O1P": "OP1",
+    "O2P": "OP2",
+}
+
+def unwrap_sequential(ag: AtomGroup, inplace=True):
+    pos = ag.positions
+    Δpos = np.diff(pos, axis=0, prepend=pos[[0]])
+    Δpos = mda.lib.distances.minimize_vectors(Δpos, ag.dimensions)
+    new_pos = pos[0] + np.cumsum(Δpos, axis=0)
+    if inplace:
+        ag.positions = new_pos
+    return new_pos
+
+
+def standardize_names(ag: AtomGroup | Universe):
+    """
+    Standardize atom names according to PDB standard residues
+    """
+    ag = ag.atoms
+    ag.names = [
+        STANDARD_NAMES[name] if name in STANDARD_NAMES else name for name in ag.names
+    ]
+
 
 def reorder_residue_atoms(ag):
     """
@@ -26,6 +47,7 @@ def reorder_residue_atoms(ag):
     """
     order = np.lexsort((ag.names, ag.resindices))
     return ag[order]
+
 
 def check_alignable(mob_align, ref_align):
     if len(mob_align) != len(ref_align):
@@ -42,6 +64,7 @@ def check_alignable(mob_align, ref_align):
             "Ref: " + " ".join(ref_align.names[diff][:10]) + "… "
         )
 
+
 def wrap_around(ag1, position):
     """Wraps atoms in `ag1` in the unit cell centered at `position`"""
     position = np.asarray(position)
@@ -50,6 +73,7 @@ def wrap_around(ag1, position):
     ag1.wrap()
     ag1.translate(position - box_center)
 
+
 def wrap_around_atomgroup(ag1, ag2):
     """Wraps the atoms in `ag1` to the periodic image
     minimizing the distance to `ag2`."""
@@ -57,6 +81,7 @@ def wrap_around_atomgroup(ag1, ag2):
     closest_j = np.argmin(d, axis=1)
     pos_j = ag2.positions[closest_j]
     wrap_around(ag1, pos_j)
+
 
 def global_align(
     mobile: AtomGroup | Universe,
@@ -92,11 +117,16 @@ def global_align(
     if out_radius is not None:
         # NB: `around` is exclusive
         mob_out = mob_out.select_atoms(
-            f"group mob_align or around {out_radius} group mob_align", mob_align=mob_align, sorted=False, periodic=False)
+            f"group mob_align or around {out_radius} group mob_align",
+            mob_align=mob_align,
+            sorted=False,
+            periodic=False,
+        )
 
     _ = align.alignto(mob_align, ref_align, subselection=mob_out)
 
     return mob_out
+
 
 def local_align(
     mobile: AtomGroup | Universe,
@@ -162,7 +192,9 @@ def local_align(
     }
 
     # Could be extended to atom-wise alignment
-    mob_out_or_align = mobile.select_atoms(f"({align_sel}) or ({out_sel})", sorted=False)
+    mob_out_or_align = mobile.select_atoms(
+        f"({align_sel}) or ({out_sel})", sorted=False
+    )
     iter = tqdm(ref_align.residues) if verbose else ref_align.residues
     for r in iter:
         # Select reference atoms
@@ -186,7 +218,10 @@ def local_align(
         # )
         _ref_r = r.atoms
         _, _, _inds = np.intersect1d(
-            _ref_r.indices, ref_align.indices, assume_unique=True, return_indices=True,
+            _ref_r.indices,
+            ref_align.indices,
+            assume_unique=True,
+            return_indices=True,
         )
         _out_r = mob_align[_inds]
         _out_r_sel = f"index {' '.join(map(str, _out_r.indices))}"
@@ -321,7 +356,7 @@ class Alignment(AnalysisBase):
         outfile = self.outpath.with_stem(f"{self.outpath.stem}_{self._ts.frame}")
         with mda.Writer(outfile, multiframe=False) as W:
             W.write(unew.atoms)
-            del(W.obj)  # This is needed to avoid a memory leak
+            del W.obj  # This is needed to avoid a memory leak
         self.results.outfiles.append(outfile)
 
     def _single_frame_global(self):
