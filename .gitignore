@@ -27,6 +27,7 @@ mdout.mdp
 *.ndx
 *.npy
 *.out
+*.pkl
 *.pdb
 *.pdf
 processed.top
@@ -41,3 +42,6 @@ processed.top
 # Backup output
 \#*\#
 bck.*
+
+# Other
+sync_data.sh

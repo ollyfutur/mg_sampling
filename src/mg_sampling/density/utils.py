@@ -93,7 +93,7 @@ def flatmap_to_dense(flatmap, vox_indices, map_params):
     map[vox_indices] = flatmap
     return map.reshape(map_params['nbin'], order='F')
 
-class DensityNorm:
+class QuantileTransformation:
     """
     Given two PDFs
         x ~ p
@@ -101,18 +101,18 @@ class DensityNorm:
     Find f such that
         f(y) ~ p
     """
-    def __init__(self, p, q, xrange, yrange=None):
+    def __init__(self, p, q, x_range, y_range=None):
 
-        if yrange is None:
-            yrange = xrange
+        if y_range is None:
+            y_range = x_range
 
-        self.xrange = np.asarray(xrange)
-        self.yrange = np.asarray(yrange)
-        self.p = np.asarray(p) / trapezoid(p, xrange)
-        self.q = np.asarray(q) / trapezoid(q, yrange)
+        self.x_range = np.asarray(x_range)
+        self.y_range = np.asarray(y_range)
+        self.p = np.asarray(p) / trapezoid(p, x_range)
+        self.q = np.asarray(q) / trapezoid(q, y_range)
         
-        self.invP = interp1d(cumulative_trapezoid(p, xrange, initial=0), xrange, fill_value='extrapolate')
-        self.Q = interp1d(yrange, cumulative_trapezoid(q, yrange, initial=0), fill_value='extrapolate')
+        self.invP = interp1d(cumulative_trapezoid(p, x_range, initial=0), x_range, fill_value='extrapolate')
+        self.Q = interp1d(y_range, cumulative_trapezoid(q, y_range, initial=0), fill_value='extrapolate')
     
     def __call__(self, x):
         return self.invP(self.Q(x))
