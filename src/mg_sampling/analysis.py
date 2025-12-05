@@ -100,6 +100,7 @@ class IonNucleicAnalysis(AnalysisBase):
             inner_cutoff: float = 2.5,
             outer_cutoff: float | None = None,
             output_distances: bool = False,
+            keep_empty: bool = True,
             verbose: bool = True,
             ):
         """
@@ -116,6 +117,8 @@ class IonNucleicAnalysis(AnalysisBase):
             cutoff radius for the outer (second) solvation shell
         output_distances: bool, optional (False)
             save distances to ligands
+        keep_empty: bool, optional (True)
+            whether to keep entries where no ligand is detected
         verbose: bool, optional (True)
             show progress
         """
@@ -130,6 +133,7 @@ class IonNucleicAnalysis(AnalysisBase):
         self.inner_cutoff = inner_cutoff
         self.outer_cutoff = outer_cutoff
         self.output_distances = output_distances
+        self.keep_empty = keep_empty
     
     def _prepare(self):
         self._ions = self.u.select_atoms(self.ionsel)
@@ -162,7 +166,8 @@ class IonNucleicAnalysis(AnalysisBase):
         for i, a in enumerate(self._ions):
             ag_lig_inner = self._ags_lig_inner[i]
             ag_lig_outer = self._ags_lig_outer[i] if self.outer_cutoff is not None else None
-            if ag_lig_inner or ag_lig_outer:
+
+            if self.keep_empty or ag_lig_inner or ag_lig_outer:
                 stereo = get_stereochemistry(a, ag_lig_inner)
                 data = {
                     'frame': self._ts.frame,

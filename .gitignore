@@ -27,6 +27,7 @@ mdout.mdp
 *.ndx
 *.npy
 *.out
+*.parquet
 *.pkl
 *.pdb
 *.pdf
