@@ -1,7 +1,9 @@
 # Extract trajectory frames
 
-systems="7ez0_noion"
-forcefields="nMg_tip3p"
+systems="7ez0_nomg"
+forcefields="mMg_tip3p"
+tstart=0
+dt=2000
 
 for system in $systems; do
 for forcefield in $forcefields; do
@@ -13,8 +15,8 @@ for forcefield in $forcefields; do
    for rep in $path/rep??; do
       $GMX trjconv -f $rep/run.xtc \
                    -s $rep/run.tpr \
-                   -b 150000 \
-                   -dt 2000 \
+                   -b $tstart \
+                   -dt $dt \
                    -center \
                    -pbc mol \
                    -o $workdir/extracted_${i}.xtc << EOM

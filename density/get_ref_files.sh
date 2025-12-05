@@ -14,3 +14,6 @@ curl -LO https://files.wwpdb.org/pub/emdb/structures/EMD-42499/other/emd_42499_h
 gzip -d emd_42498.map.gz emd_42498_half_map_1.map.gz emd_42498_half_map_2.map.gz emd_42499.map.gz emd_42499_half_map_1.map.gz emd_42499_half_map_2.map.gz
 curl -LO https://files.wwpdb.org/pub/emdb/structures/EMD-31385/map/emd_31385.map.gz
 gzip -d emd_31385.map.gz
+for f in *.map; do
+   mv $f ${f%.*}.mrc
+done

@@ -41,7 +41,7 @@ class Grid(gridData.Grid):
 
         self._exporters.update({"MRC": self._export_mrc})
 
-    def _export_mrc(self, filename, overwrite=False, **kwargs):
+    def _export_mrc(self, filename, overwrite=True, **kwargs):
         with mrcfile.new(filename, overwrite=overwrite) as mrc:
             mrc.set_data(
                 self.grid.transpose((2, 1, 0)),  # Default C-style ordering Z, Y, X

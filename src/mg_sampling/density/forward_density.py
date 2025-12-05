@@ -131,7 +131,7 @@ def atomgroup_to_map(
     chunk_size: int | None = None,
 ) -> Grid:
     """
-    Return map from the atoms in `ag` on a grid provided with `map_params`.
+    Return map from the atoms in `ag` on a grid provided with `grid_params`.
     """
     if isinstance(delta, Number):
         delta = (delta, delta, delta)
@@ -219,6 +219,7 @@ def file_to_map(
     cutoff=4.0,
     tempfactor=None,
     device="cpu",
+    chunk_size=None,
     verbose=False,
 ):
     """
@@ -242,8 +243,10 @@ def file_to_map(
         shape=shape,
         delta=delta,
         origin=origin,
+        vox_indices=vox_indices,
         cutoff=cutoff,
         device=device,
+        chunk_size=chunk_size,
     )
     t2 = time.time()
 
@@ -253,10 +256,7 @@ def file_to_map(
         print(f"  Loading: {t1 - t0:.2f} s")
         print(f"  Map: {t2 - t1:.2f} s", flush=True)
 
-    if vox_indices is not None:
-        return map_.to_sparse(vox_indices=vox_indices)
-    else:
-        return map_
+    return map_
 
 
 def main():
@@ -281,7 +281,7 @@ def main():
     )
     parser.add_argument(
         "--frame-out",
-        type=str,
+        action="store_true",
         help="Output sparse map for each input structure/frame as a numpy (*.npy) flat array corresponding to selected voxels.",
     )
     parser.add_argument(
@@ -305,12 +305,12 @@ def main():
     parser.add_argument(
         "--ref", type=str, help="Reference structure used for voxel selection"
     )
-    parser.add_argument("--vox-index", type=str, help="Input voxel index NumPy file")
+    parser.add_argument("--vox-indices", type=str, help="Input voxel indices NumPy file")
     parser.add_argument(
-        "--vox-index-out",
+        "--vox-indices-out",
         type=str,
         default="vox_indices.npy",
-        help="Output voxel index NumPy file",
+        help="Output voxel indices NumPy file",
     )
     parser.add_argument(
         "--vox-around",
@@ -354,9 +354,9 @@ def main():
 
     if args.map is not None:
         refmap = Grid(args.map)
-        map_params = {
-            "x0": refmap.origin,
-            "dx": refmap.delta,
+        grid_params = {
+            "origin": refmap.origin,
+            "delta": refmap.delta,
             "shape": refmap.shape,
             "size": refmap.size,
         }
@@ -366,19 +366,19 @@ def main():
         raise NotImplementedError("Reference map is needed")
 
     print("  Parameters:")
-    print("    x0:", map_params["origin"])
-    print("    dx:", map_params["delta"])
-    print("    shape:", map_params["shape"])
-    print("    size:", map_params["size"])
+    print("    origin:", grid_params["origin"])
+    print("    delta:", grid_params["delta"])
+    print("    shape:", grid_params["shape"])
+    print("    size:", grid_params["size"])
 
     if args.vox_indices is None and args.vox_around is None:
-        vox_indices = np.arange(map_params["size"])
+        vox_indices = np.arange(grid_params["size"])
     else:
         vox_indices = np.array([], dtype=int)
 
     if args.vox_indices is not None:
         vox_indices = np.load(args.vox_indices)
-        print(f"Selecting {len(vox_indices)} from voxel index file:", args.vox_indices)
+        print(f"Selecting {len(vox_indices)} from voxel indices file:", args.vox_indices)
 
     if args.vox_around is not None:
         if args.ref is None:
@@ -388,7 +388,7 @@ def main():
         for vox_r, vox_sel in args.vox_around:
             vox_r = float(vox_r)
             vox_ag = vox_ref.select_atoms(vox_sel)
-            _inds = voxels_around(vox_ag, vox_r, map_params)
+            _inds = voxels_around(vox_ag, vox_r, grid_params)
             vox_indices = np.union1d(vox_indices, _inds)
             print(f"Selecting {len(_inds)} voxels around:")
             print("  Reference:", args.ref)
@@ -403,7 +403,7 @@ def main():
         for vox_r, vox_sel in args.vox_not_around:
             vox_r = float(vox_r)
             vox_ag = vox_ref.select_atoms(vox_sel)
-            _inds = voxels_around(vox_ag, vox_r, map_params)
+            _inds = voxels_around(vox_ag, vox_r, grid_params)
             assert _inds.dtype == int
             vox_indices = np.setdiff1d(vox_indices, _inds)
             print(f"Excluding {len(_inds)} voxels around:")
@@ -413,7 +413,7 @@ def main():
 
     print("Final voxel number:", len(vox_indices))
     np.save(args.vox_indices_out, vox_indices)
-    print("Saved voxel index file:", args.vox_indices_out)
+    print("Saved voxel indices file:", args.vox_indices_out)
 
     if args.chunk_size is None:
         mem = (
@@ -425,7 +425,7 @@ def main():
             print(f"Detected total of free memory: {mem * 1e-9:.2f} Gb")
         # Heuristic
         kernel_size = np.prod(
-            2 * np.ceil(args.cutoff / np.asarray(map_params["delta"])) + 1
+            2 * np.ceil(args.cutoff / np.asarray(grid_params["delta"])) + 1
         )
         chunk_size = 2 ** int(
             np.log2(mem)
@@ -438,29 +438,31 @@ def main():
         chunk_size = args.chunk_size
     print(f"Using maximum chunk size of {chunk_size}")
 
-    if len(vox_indices) == map_params["size"]:
+    if len(vox_indices) == grid_params["size"]:
         vox_indices = None
 
     _get_model_map = partial(
         file_to_map,
-        sel=args.sel,
-        tempfactor=args.tempfactor,
+        shape=grid_params["shape"],
+        delta=grid_params["delta"],
+        origin=grid_params["origin"],
         vox_indices=vox_indices,
-        device=device,
+        sel=args.sel,
         cutoff=args.cutoff,
+        tempfactor=args.tempfactor,
+        device=device,
         chunk_size=chunk_size,
         verbose=args.verbose,
-        **map_params,
     )
 
     def run(iter):
         tot_map = None
         if args.progress:
             iter = tqdm(iter)
-        for i, map_ in enumerate(iter):
-            if args.frame_out is not None:
-                outfile = Path(args.frame_out)
-                outfile = outfile.with_stem(f"{outfile.stem}_{i}").with_suffix(".pkl")
+        for i, (filename, map_) in enumerate(iter):
+            if args.frame_out:
+                outfile = Path(filename)
+                outfile = outfile.with_stem(f"{outfile.stem}").with_suffix(".pkl")
                 map_.save(outfile)
                 print(f"Saving frame {i}: {outfile}")
             tot_map = map_ if tot_map is None else tot_map + map_
@@ -471,7 +473,7 @@ def main():
     if args.processes > 0:
         mp.set_start_method("spawn")
         with mp.Pool(args.processes) as pool:
-            iter = pool.imap(_get_model_map, args.input)
+            iter = zip(args.input, pool.imap(_get_model_map, args.input))
             tot_map = run(iter)
     else:
         iter = args.input

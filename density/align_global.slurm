@@ -11,14 +11,14 @@
 
 # sims="plain_md_* replex_*"
 # sims="replex_7ez0_mMg_tip3p_0"
-sims="plain_md_7ez0_nMg_tip3p_soft plain_md_7ez0_noion_nMg_tip3p"
+sims="plain_md_7ez0_nomg_mMg_tip3p"
 
 for sim in $sims; do
    mkdir -p $sim/aligned_global
    srun -N1 -n1 -c32 align $sim/input.gro --mode 'global' --traj $sim/extracted.xtc \
-      --ref 9cbu.pdb \
+      --ref 9CBU.pdb \
       --sel 'not type H and nucleic' \
-      --refsel 'not type H and nucleic and not (resid 22 and name P O1P O2P)' \
+      --refsel 'not type H and nucleic and not (resid 22 and name P OP1 OP2)' \
       --ralign 12 \
       --rout 8 \
       --reorder \

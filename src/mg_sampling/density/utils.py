@@ -63,7 +63,7 @@ def get_voxel_coords(grid_params, vox_indices=None):
     return vox_xyz
 
 
-def voxels_around(ag: AtomGroup, radius: float, **grid_params):
+def voxels_around(ag: AtomGroup, radius: float, grid_params):
     # TODO: take into account vdW radii?
     origin = np.asarray(grid_params["origin"])
     delta = np.asarray(grid_params["delta"])
