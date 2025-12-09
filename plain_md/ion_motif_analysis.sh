@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ions="MG"
-replicas="rep??"
+replicas="rep07"
 
 for ion in $ions; do
 for rep in $replicas; do
