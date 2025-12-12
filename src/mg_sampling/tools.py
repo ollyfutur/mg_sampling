@@ -28,44 +28,6 @@ def range_to_edges(arange):
     return np.linspace(arange[0] - dx / 2, arange[-1] + dx / 2, len(arange) + 1)
 
 
-def block_analysis(*inputs, func, n_blocks=5, skip=0):
-    """
-    Perform a block analysis of the statistic `func` that takes as arguments one or more `inputs`
-    timeseries, by splitting each series in `n_blocks` of equal length. Returns the mean and
-    standard error of the mean on the `n_blocks`, ignoring the first `skip` blocks.
-    """
-    n_frames = len(inputs[0])
-    if isinstance(skip, float):
-        skip = int(n_frames * skip)
-    block_inds = np.array_split(np.arange(skip, n_frames), n_blocks)
-
-    outputs = []
-    for inds in block_inds:
-        _inputs = (inp[inds] for inp in inputs)
-        outputs.append(func(*_inputs))
-
-    mean = np.mean(outputs, axis=0)
-    var = np.var(outputs, axis=0)
-    stderr = np.sqrt(var / n_blocks)
-
-    return mean, stderr
-
-
-def bootstrap(*inputs, func, n_resample=20, weights=None):
-    n_frames = len(inputs[0])
-
-    outputs = []
-    for _ in range(n_resample):
-        inds = np.random.choice(n_frames, size=n_frames, p=weights)
-        _inputs = (inp[inds] for inp in inputs)
-        outputs.append(func(*_inputs))
-
-    mean = np.mean(outputs, axis=0)
-    stderr = np.std(outputs, axis=0)
-
-    return mean, stderr
-
-
 ConfidenceInterval = namedtuple("ConfidenceInterval", ["low", "high"])
 
 
@@ -97,9 +59,8 @@ def bayesian_bootstrap(
     data,
     statistic,
     *,
-    alpha=4,
+    alpha=1,
     n_resamples=200,
-    n_blocks=1,
     rng=None,
     confidence_level=0.95,
 ):
@@ -108,31 +69,14 @@ def bayesian_bootstrap(
     A weight vector for each observation of `data` is drawn from a Dirichlet distribution
     of dimension `len(data)` with parameter `alpha`. If `statistic` does not accept the `weights`
     keyword argument, two-level sampling is performed.
-
-    Optionally, block analysis can be performed by setting `n_blocks`. The sequence
-    `data` will be divided in blocks of approximately equal size. Block will be weighted
-    from a Dirichlet distribution of dimension `n_blocks` with parameter `alpha`, and
-    observations within each block will be weighted as above. Note that `n_blocks = 1`
-    is equivalent to `n_blocks = len(data)`.
     """
     rng = np.random.default_rng(rng)
     accepts_weights = "weights" in inspect.signature(statistic).parameters
-    q_l, q_u = (1 - confidence_level) / 2, confidence_level / 2
+    q_l, q_u = (1 - confidence_level) / 2, 1 - (1 - confidence_level) / 2
 
     n_samples = len(data)
 
-    block_size, extras = divmod(n_samples, n_blocks)
-    block_sizes = extras * [block_size + 1] + (n_blocks - extras) * [block_size]
-
-    block_weights = rng.dirichlet(alpha * np.ones(n_blocks), n_resamples)
-    weights = np.concatenate(
-        [
-            block_weights[:, k, None]
-            * rng.dirichlet(alpha * np.ones(block_sizes[k]), n_resamples)
-            for k in range(n_blocks)
-        ],
-        axis=1,
-    )
+    weights = rng.dirichlet(alpha * np.ones(n_samples), n_resamples)
 
     if accepts_weights:
         res = [statistic(data, weights=weights[i]) for i in range(n_resamples)]
@@ -156,6 +100,29 @@ def bayesian_bootstrap(
     )
 
 
+def block_bootstrap(*inputs, func, n_blocks=5, skip=0):
+    """
+    Perform a block analysis of the statistic `func` that takes as arguments one or more `inputs`
+    timeseries, by splitting each series in `n_blocks` of equal length. Returns the mean and
+    standard error of the mean on the `n_blocks`, ignoring the first `skip` blocks.
+    """
+    n_frames = len(inputs[0])
+    if isinstance(skip, float):
+        skip = int(n_frames * skip)
+    block_inds = np.array_split(np.arange(skip, n_frames), n_blocks)
+
+    outputs = []
+    for inds in block_inds:
+        _inputs = (inp[inds] for inp in inputs)
+        outputs.append(func(*_inputs))
+
+    mean = np.mean(outputs, axis=0)
+    var = np.var(outputs, axis=0)
+    stderr = np.sqrt(var / n_blocks)
+
+    return mean, stderr
+
+
 def to_wsv(df: pd.DataFrame, path):
     with open(path, "w") as f:
         f.write(df.to_string(index=False))
@@ -166,12 +133,14 @@ def read_wsv(path):
     return df
 
 
-def read_plumed(path):
+def read_plumed(path, drop_duplicates=True):
     with open(path, "r") as f:
         header = next(f)
         columns = header.split()[2:]
     df = pd.read_csv(path, delimiter="\s+", comment="#", header=None)
     df.columns = columns
+    if drop_duplicates:
+        df = df.drop_duplicates(subset='time', keep='last')
     return df
 
 
