@@ -2,19 +2,20 @@
 #SBATCH --job-name=motif
 #SBATCH -N 1
 #SBATCH --time=24:00:00
-#SBATCH --time=00:30:00
 #SBATCH --cpus-per-task=4
 #SBATCH --ntasks-per-node=8
 #SBATCH --account=Sis25_bussi
 #SBATCH --partition=boost_usr_prod
-#SBATCH --qos=boost_qos_dbg
 
-ions="MG"
-replicas="rep??"
+ions="MG NA"
+sims="7ez0/mMg_tip3p 7ez0/nMg_tip3p 7ez0/mMg_tip3p_soft 7ez0/nMg_tip3p_soft 7ez0_noion/nMg_tip3p 7ez0_nomg/mMg_tip3p"
 
 for ion in $ions; do
-   for rep in $replicas; do
-      srun -n1 -c4 ion_motif_analysis $rep/input.gro $rep/run.xtc -o $rep/${ion}_OW_motifs.parquet --sel "name ${ion}" --ligsel 'nucleic or name NA MG CL OW' --inner_cutoff 2.8 --outer_cutoff 5.0 --step 10 -n 4 &
+   for sim in $sims; do
+      replicas="$sim/rep??"
+      for rep in $replicas; do
+         srun -n1 -c4 ion_motif_analysis $rep/input.gro $rep/run.xtc -o $rep/${ion}_motifs.parquet --sel "name ${ion}" --ligsel 'nucleic or name NA MG CL' --inner_cutoff 2.8 --outer_cutoff 0 -n 4 &
+      done
+      wait
    done
 done
-wait
