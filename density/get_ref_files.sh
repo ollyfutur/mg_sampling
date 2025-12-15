@@ -1,10 +1,5 @@
 #!/bin/bash
 
-curl -LO https://files.rcsb.org/download/9CBU.pdb
-curl -LO https://files.rcsb.org/download/9CBW.pdb
-curl -LO https://files.rcsb.org/download/9CBX.pdb
-curl -LO https://files.rcsb.org/download/9CBY.pdb
-curl -LO https://files.rcsb.org/download/7EZ0.pdb
 curl -LO https://files.wwpdb.org/pub/emdb/structures/EMD-42498/map/emd_42498.map.gz
 curl -LO https://files.wwpdb.org/pub/emdb/structures/EMD-42498/other/emd_42498_half_map_1.map.gz
 curl -LO https://files.wwpdb.org/pub/emdb/structures/EMD-42498/other/emd_42498_half_map_2.map.gz
