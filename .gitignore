@@ -34,6 +34,7 @@ mdout.mdp
 processed.top
 *.tpr
 *.trr
+*.txt
 *.xtc
 *.xvg
 *.wsv
