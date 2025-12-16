@@ -88,16 +88,18 @@ def run(
     #
     # print("Saving output map:", out_file, flush=True)
     # tot_map.save(out_file)
-    np.savetxt(f"{out_file.stem}_weights.txt", weights_slice.sum())
+    with open(f"{out_file.stem}_weights.txt", "w") as f:
+        f.write(f"{weights_slice.sum()}")
 
 
 if __name__ == "__main__":
     device = "cuda"
     chunk_size = 16384
-    num_workers = int(os.environ["SLURM_CPUS_PER_TASK"])
+    #num_workers = int(os.environ["SLURM_CPUS_PER_TASK"])
+    num_workers = 1
 
     # Reference structure to align to
-    ref_file = PROJECT_DIR / "density/9CBU.pdb"
+    ref_file = PROJECT_DIR / "structures/9CBU_fixed.pdb"
     # Reference CryoEM map (for map geometry)
     grid_params = Grid(
         PROJECT_DIR / "density/emd_42499.mrc", file_format="mrc"
