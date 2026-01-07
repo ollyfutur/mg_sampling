@@ -3,8 +3,8 @@
 #systems="7ez0 7ez0_noion"
 systems="7ez0_noion"
 forcefields="nMg_tip3p"
-from_rep=4
-to_rep=7
+from_rep=0
+to_rep=3
 n_rep=$((to_rep-from_rep+1))
 
 for system in $systems; do

@@ -11,11 +11,11 @@
 ;	
 ;	Executable:   /leonardo/pub/userexternal/olanguin/install/gromacs-2023.5-plumed-2.10b/bin/gmx_mpi
 ;	Data prefix:  /leonardo/pub/userexternal/olanguin/install/gromacs-2023.5-plumed-2.10b
-;	Working dir:  /leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/structures/7ez0_noion/nMg_tip3p
+;	Working dir:  /leonardo_work/Sis25_bussi/Olivier/mg_sampling/structures/7ez0_noion/nMg_tip3p
 ;	Command line:
 ;	  gmx_mpi pdb2gmx -f 7ez0_fixed.pdb -ff amber14sb_nMg_tip3p -water tip3p -noh
 ;	Force field data was read from:
-;	/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/forcefields
+;	/leonardo_work/Sis25_bussi/Olivier/mg_sampling/forcefields
 ;
 ;	Note:
 ;	This might be a non-standard force field location. When you use this topology, the
@@ -24,7 +24,7 @@
 ;
 
 ; Include forcefield parameters
-#include "/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/forcefields/amber14sb_nMg_tip3p.ff/forcefield.itp"
+#include "/leonardo_work/Sis25_bussi/Olivier/mg_sampling/forcefields/amber14sb_nMg_tip3p.ff/forcefield.itp"
 
 [ moleculetype ]
 ; Name            nrexcl
@@ -120039,7 +120039,7 @@ RNA_chain_N         3
 #endif
 
 ; Include water topology
-#include "/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/forcefields/amber14sb_nMg_tip3p.ff/tip3p.itp"
+#include "/leonardo_work/Sis25_bussi/Olivier/mg_sampling/forcefields/amber14sb_nMg_tip3p.ff/tip3p.itp"
 
 #ifdef POSRES_WATER
 ; Position restraint for each water oxygen
@@ -120049,7 +120049,7 @@ RNA_chain_N         3
 #endif
 
 ; Include topology for ions
-#include "/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/forcefields/amber14sb_nMg_tip3p.ff/ions.itp"
+#include "/leonardo_work/Sis25_bussi/Olivier/mg_sampling/forcefields/amber14sb_nMg_tip3p.ff/ions.itp"
 
 [ system ]
 ; Name
