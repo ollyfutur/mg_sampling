@@ -63,12 +63,15 @@ def bayesian_bootstrap(
     n_resamples=200,
     rng=None,
     confidence_level=0.95,
+    weights=None,
+    **kwargs,
 ):
     """
     Perform bayesian bootstrap on a sequence of observations `data` for a given `statistic`.
     A weight vector for each observation of `data` is drawn from a Dirichlet distribution
-    of dimension `len(data)` with parameter `alpha`. If `statistic` does not accept the `weights`
-    keyword argument, two-level sampling is performed.
+    of dimension `len(data)` with parameter `alpha`, and combined with the provided `weights`
+    if any. If `statistic` does not accept the `weights` keyword argument, two-level sampling is
+    performed.
     """
     rng = np.random.default_rng(rng)
     accepts_weights = "weights" in inspect.signature(statistic).parameters
@@ -76,10 +79,19 @@ def bayesian_bootstrap(
 
     n_samples = len(data)
 
-    weights = rng.dirichlet(alpha * np.ones(n_samples), n_resamples)
+    # If no weights passed, use uniform Dirichlet
+    if weights is None:
+        weights = np.ones(n_samples)
+    else:
+        weights = np.asarray(weights)
+
+    # Normalize weights to mean concentration
+    weights = weights / weights.mean() * alpha
+
+    weights = rng.dirichlet(weights, n_resamples)
 
     if accepts_weights:
-        res = [statistic(data, weights=weights[i]) for i in range(n_resamples)]
+        res = [statistic(data, weights=weights[i], **kwargs) for i in range(n_resamples)]
     else:
         res = []
         for i in range(n_resamples):
@@ -87,7 +99,7 @@ def bayesian_bootstrap(
                 data[j]
                 for j in np.random.choice(n_samples, size=n_samples, p=weights[i])
             ]
-            res.append(statistic(_data))
+            res.append(statistic(_data, **kwargs))
 
     res = np.asarray(res)
 
@@ -99,6 +111,32 @@ def bayesian_bootstrap(
         standard_error=np.std(res, ddof=1, axis=-1),
     )
 
+def bootstrap(data, func, weights=None, n_resamples=200, rng=None, confidence_level=0.95):
+    """
+    Classical bootstrap with weighted samples.
+    """
+    rng = np.random.default_rng(rng)
+    q_l, q_u = (1 - confidence_level) / 2, 1 - (1 - confidence_level) / 2
+    n_samples = len(data)
+
+    if weights is not None:
+        weights = np.asarray(weights)
+        weights = weights / weights.sum()
+    
+    res = []
+    for _ in range(n_resamples):
+        inds = rng.choice(n_samples, size=n_samples, replace=True, p=weights)
+        _data = data[inds]
+        res.append(func(_data))
+    
+    ci_l, ci_u = np.quantile(res, (q_l, q_u))
+
+    return BootstrapResult(
+        confidence_interval=ConfidenceInterval(ci_l, ci_u),
+        bootstrap_distribution=res,
+        standard_error=np.std(res, ddof=1, axis=-1),
+    )
+        
 
 def block_bootstrap(*inputs, func, n_blocks=5, skip=0):
     """

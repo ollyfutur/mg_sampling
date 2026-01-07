@@ -10,6 +10,7 @@
 #SBATCH --time=00:30:00
 #SBATCH --qos=boost_qos_dbg
 
-
-#srun python forward_density_plain_md.py
-srun python forward_density_replex.py
+srun forward_density $topfile --traj $trajfile --start $start --end $end --step $step --weights $weightfile \
+   --map emd_42499.mrc --sel 'not type H' --outfile $outfile --tempfactor 0 \
+   --ref $reffile --align-sel 'not type H and nucleic and not (resid 22 and name P OP1 OP2)' --vox-around 6 "nucleic" \
+   --processes 6 -v 

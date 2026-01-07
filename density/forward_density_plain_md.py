@@ -1,10 +1,12 @@
-import os
 import itertools
+from collections import Counter
 
 import MDAnalysis as mda
 from MDAnalysis.analysis.align import alignto
 
-from dask import compute, delayed
+from dask import delayed, compute
+from dask.distributed import Client
+
 from tqdm import tqdm
 from mg_sampling import PROJECT_DIR
 from mg_sampling.density.align import (
@@ -53,20 +55,24 @@ def run(
     check_alignable(mob_align, ref_align)
 
     mob_out = u.select_atoms("not type H")
-    mob_out = mob_out.select_atoms(
-        "group mob_align or around 10 group mob_align",
+    mob_out_or_align = mob_out + mob_align
+    mob_out_sub = mob_out_or_align.select_atoms(
+        "group mob_out and (group mob_align or around 10 group mob_align)",
         mob_align=mob_align,
+        mob_out=mob_out,
         updating=True,
     )
 
     tot_map = 0
     n_frames = len(u.trajectory[start:end:step])
+    print(f"Total frames: {n_frames}")
+    print(Counter(mob_out_sub.names))
     for ts in tqdm(u.trajectory[start:end:step], miniters=10):
         unwrap_sequential(mob_align)
-        wrap_around_atomgroup(mob_out, mob_align_light)
-        alignto(mob_align, ref_align, subselection=mob_out)
+        wrap_around_atomgroup(mob_out_sub, mob_align_light)
+        alignto(mob_align, ref_align, subselection=mob_out_sub)
         map_ = atomgroup_to_map(
-            mob_out,
+            mob_out_sub,
             shape=grid_params["shape"],
             delta=grid_params["delta"],
             origin=grid_params["origin"],
@@ -83,20 +89,23 @@ def run(
 
 if __name__ == "__main__":
     device = "cuda"
-    chunk_size = 16384
-    num_workers = int(os.environ["SLURM_CPUS_PER_TASK"])
+    chunk_size = 8192
+    n_workers = 8
 
     # Reference structure to align to
-    ref_file = PROJECT_DIR / "density/9CBU.pdb"
+    ref_file = PROJECT_DIR / "structures/9CBU_fixed.pdb"
     # Reference CryoEM map (for map geometry)
     grid_params = Grid(
         PROJECT_DIR / "density/emd_42499.mrc", file_format="mrc"
     ).grid_params
 
-    systems = ["7ez0", "7ez0_noion", "7ez0_nomg"]
-    forcefields = ["mMg_tip3p", "nMg_tip3p", "nMg_tip3p_soft"]
+    systems = ["7ez0_nomg"]
+    # forcefields = ["mMg_tip3p", "nMg_tip3p", "nMg_tip3p_soft"]
+    forcefields = ["mMg_tip3p"]
     replicates = range(8)
-    start = 1500  # after 150 ns equilibration
+    start = 500  # after 200 ns equilibration
+    end = 2000
+    step = 1  # tot: 400 frames per replicate ~ 3200 for one system
 
     tasks = []
     for sys, ff, rep in itertools.product(systems, forcefields, replicates):
@@ -114,17 +123,22 @@ if __name__ == "__main__":
         out_file = outpath / f"rep{rep:02d}.pkl"
 
         tasks.append(
-            delayed(run)(
+            delayed(run, pure=False)(
                 top_file,
                 traj_file,
                 ref_file,
                 out_file,
                 grid_params,
                 start=start,
+                end=end,
+                step=step,
                 device=device,
                 chunk_size=chunk_size,
             )
         )
 
-    print(f"Computing {len(tasks)} tasks…", flush=True)
-    compute(*tasks, scheduler="processes", num_workers=num_workers)
+
+    with Client(threads_per_worker=1, n_workers=n_workers) as client:
+        print(f"Computing {len(tasks)} tasks…", flush=True)
+        print("Dashboard:", client.dashboard_link)
+        compute(*tasks)

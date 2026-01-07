@@ -7,17 +7,16 @@ import argparse
 import time
 from collections import Counter
 from collections.abc import Sequence
-from functools import partial
 from numbers import Number
-from pathlib import Path
 
 import MDAnalysis as mda
+from MDAnalysis.analysis.results import ResultsGroup
+from MDAnalysis.analysis.base import AnalysisBase
+
 import numpy as np
 import psutil
 import torch
-import torch.multiprocessing as mp
 from MDAnalysis import AtomGroup
-from tqdm import tqdm
 
 from mg_sampling.density.grid import Grid, SparseGrid
 from mg_sampling.density.utils import voxels_around
@@ -209,54 +208,70 @@ def atomgroup_to_map(
         )
 
 
-def file_to_map(
-    file,
-    shape: tuple[int],
-    delta: tuple[float] | float,
-    origin: tuple[float] = (0, 0, 0),
-    vox_indices=None,
-    sel="all",
-    cutoff=4.0,
-    tempfactor=None,
-    device="cpu",
-    chunk_size=None,
-    verbose=False,
-):
-    """
-    Computes density from `file`.
-    Returns either a 3-dimensional map (`outshape='map'`) or a flat array
-    corresponding to `vox_indices`.
-    """
-    if verbose:
-        pid = f"[{mp.current_process().name}]" if mp.current_process().daemon else ""
-        print(f"{pid} Computing density from:", file, flush=True)
+class ForwardDensity(AnalysisBase):
+    _analysis_algorithm_is_parallelizable = True
 
-    t0 = time.time()
-    u = mda.Universe(file)
-    ag = u.select_atoms(sel)
-    if tempfactor is not None:
-        ag.tempfactors = tempfactor
-    atom_count = dict(Counter(ag.types))
-    t1 = time.time()
-    map_ = atomgroup_to_map(
-        ag,
-        shape=shape,
-        delta=delta,
-        origin=origin,
-        vox_indices=vox_indices,
-        cutoff=cutoff,
-        device=device,
-        chunk_size=chunk_size,
-    )
-    t2 = time.time()
+    @classmethod
+    def get_supported_backends(cls):
+        return ('serial', 'multiprocessing', 'dask',)
 
-    if verbose:
-        print(f"{pid} Done computing map.")
-        print("  Atoms:", atom_count)
-        print(f"  Loading: {t1 - t0:.2f} s")
-        print(f"  Map: {t2 - t1:.2f} s", flush=True)
+    def _get_aggregator(self):
+      return ResultsGroup(lookup={
+        'timeseries': ResultsGroup.flatten_sequence,
+        'tot_map': sum,
+        })
 
-    return map_
+    def __init__(
+        self, 
+        ag: AtomGroup,
+        shape: tuple[int],
+        delta: tuple[float],
+        origin: tuple[float] = (0, 0, 0),
+        out_sel: str = "not type H",
+        vox_indices: Sequence[int] | None = None,
+        cutoff: float = 4.0,
+        timeseries: bool = False,
+        device: str = "cpu",
+        chunk_size: int | None = None,
+        **kwargs,
+    ):
+        super().__init__(ag.universe.trajectory, **kwargs)
+
+        self._ag = ag
+        self.shape = shape
+        self.delta = delta
+        self.origin = origin
+        self.vox_indices = vox_indices
+        self.cutoff = cutoff
+        self.timeseries = timeseries
+        self.device = device
+        self.chunk_size = chunk_size
+
+    def _prepare(self):
+        if self.timeseries:
+            self.results.timeseries = []
+        self.results.tot_map = None
+
+    def _single_frame(self):
+        map_ = atomgroup_to_map(
+            self._ag,
+            shape=self.shape,
+            delta=self.delta,
+            origin=self.origin,
+            vox_indices=self.vox_indices,
+            cutoff=self.cutoff,
+            device=self.device,
+        )
+        if self.timeseries:
+            self.results.timeseries.append(map_)
+
+        if self.results.tot_map is None:
+            self.results.tot_map = map_
+        else:
+            self.results.tot_map += map_
+
+    def _conclude(self):
+        self.results.map = self.results.tot_map / self.n_frames
 
 
 def main():
@@ -264,25 +279,41 @@ def main():
         prog="python forward_density.py",
         description="Forward mapping and validation of structural models and trajectories against cryo-EM map",
     )
-    parser.add_argument("input", nargs="+", type=str, help="Input structure(s)")
+
+    # Inputs
+
+    parser.add_argument("input", type=str, help="Input structure(s)")
+    parser.add_argument("--traj", nargs="*", type=str, help="Trajectory file(s)")
+    parser.add_argument("--start", type=int, help="Start frame of trajectory")
+    parser.add_argument("--end", type=int, help="End frame of trajectory (exclusive)")
+    parser.add_argument(
+        "--step", type=int, help="Only read trajectory every `step` frames"
+    )
+    parser.add_argument(
+        "--weights", type=str, help="File with weights for each frame of the trajectory"
+    )
+    parser.add_argument("--map", type=str, help="Input MRC map used as template")
+    parser.add_argument(
+        "--ref", type=str, help="Reference structure used for voxel selection"
+    )
+
+    # Outputs
+
+    parser.add_argument(
+        "-o",
+        "--outfile",
+        type=str,
+        default="map_out.mrc",
+        help="(map_out.mrc) Output average MRC map (*.mrc)",
+    )
+
+    # Selections
+
     parser.add_argument(
         "--sel",
         type=str,
         default="not type H",
         help="('all') MDAnalysis selection string for atoms that will be backmapped.",
-    )
-    parser.add_argument("--map", type=str, help="Input MRC map")
-    parser.add_argument(
-        "-o",
-        "--average-out",
-        type=str,
-        default="map_out.mrc",
-        help="(map_out.mrc) Output average MRC map (*.mrc)",
-    )
-    parser.add_argument(
-        "--frame-out",
-        action="store_true",
-        help="Output sparse map for each input structure/frame as a numpy (*.npy) flat array corresponding to selected voxels.",
     )
     parser.add_argument(
         "--cutoff",
@@ -291,21 +322,19 @@ def main():
         help="(4.0) Cutoff distance from atoms for Gaussians (nm)",
     )
     parser.add_argument(
-        "--device",
+        "--align-sel",
         type=str,
-        choices=["auto", "cpu", "gpu"],
-        default="auto",
-        help="(auto) Device",
+        help="(None) Align this selection to the reference structure",
     )
     parser.add_argument(
-        "--chunk-size",
-        type=int,
-        help="(None) Size of chunks (number of atoms) to divide computation. If None will try to guess from available memory. Try a smaller number if you get CUDA out-of-memory errors.",
+        "--ref-align-sel",
+        type=str,
+        help="(None) Selection for reference alignment matching `align-sel`. "
+        "Default is identical to `align-sel`.",
     )
     parser.add_argument(
-        "--ref", type=str, help="Reference structure used for voxel selection"
+        "--vox-indices", type=str, help="Input voxel indices NumPy file"
     )
-    parser.add_argument("--vox-indices", type=str, help="Input voxel indices NumPy file")
     parser.add_argument(
         "--vox-indices-out",
         type=str,
@@ -326,8 +355,27 @@ def main():
         help="Exclude voxels around R the SEL in reference structure",
         action="append",
     )
+
+    # Options
+    
     parser.add_argument(
-        "--tempfactor", type=float, help="Enforce this temperature factor (B-factor)"
+        "--tempfactor", type=float, help="Override with this temperature factor (B-factor) "
+                                         "instead of using the ones from input files"
+    )
+
+    # Performance options
+
+    parser.add_argument(
+        "--device",
+        type=str,
+        choices=["auto", "cpu", "gpu"],
+        default="auto",
+        help="(auto) Device",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        help="(None) Size of chunks (number of atoms) to divide computation. If None will try to guess from available memory. Try a smaller number if you get CUDA out-of-memory errors.",
     )
     parser.add_argument(
         "-p",
@@ -336,6 +384,9 @@ def main():
         default=0,
         help="Number of processes for multiprocessing.",
     )
+
+    # Information
+
     parser.add_argument("-v", "--verbose", action="store_true", help="More info")
     parser.add_argument("--progress", action="store_true", help="Display progress bar")
 
@@ -354,12 +405,7 @@ def main():
 
     if args.map is not None:
         refmap = Grid(args.map)
-        grid_params = {
-            "origin": refmap.origin,
-            "delta": refmap.delta,
-            "shape": refmap.shape,
-            "size": refmap.size,
-        }
+        grid_params = refmap.grid_params
         print("Input Cryo-EM map:")
         print("  Filename:", args.map)
     else:
@@ -371,6 +417,12 @@ def main():
     print("    shape:", grid_params["shape"])
     print("    size:", grid_params["size"])
 
+    if args.ref is not None:
+        ref = mda.Universe(args.ref)
+        print("Loading reference structure file:")
+        print("  Filename:", args.ref)
+        print("  Atoms:", ", ".join(f"{name}={n}" for name, n in Counter(ref.atoms.names).items()))
+
     if args.vox_indices is None and args.vox_around is None:
         vox_indices = np.arange(grid_params["size"])
     else:
@@ -378,36 +430,34 @@ def main():
 
     if args.vox_indices is not None:
         vox_indices = np.load(args.vox_indices)
-        print(f"Selecting {len(vox_indices)} from voxel indices file:", args.vox_indices)
+        print(
+            f"Selecting {len(vox_indices)} from voxel indices file:", args.vox_indices
+        )
 
     if args.vox_around is not None:
         if args.ref is None:
             parser.error("`--vox-around` requires setting `--ref`")
-        vox_ref = mda.Universe(args.ref)
 
         for vox_r, vox_sel in args.vox_around:
             vox_r = float(vox_r)
-            vox_ag = vox_ref.select_atoms(vox_sel)
+            vox_ag = ref.select_atoms(vox_sel)
             _inds = voxels_around(vox_ag, vox_r, grid_params)
             vox_indices = np.union1d(vox_indices, _inds)
             print(f"Selecting {len(_inds)} voxels around:")
-            print("  Reference:", args.ref)
             print("  Selection:", vox_sel)
             print("  Radius:", vox_r)
 
     if args.vox_not_around is not None:
         if args.ref is None:
             parser.error("`--vox-not-around` requires setting `--ref`")
-        vox_ref = mda.Universe(args.ref)
 
         for vox_r, vox_sel in args.vox_not_around:
             vox_r = float(vox_r)
-            vox_ag = vox_ref.select_atoms(vox_sel)
+            vox_ag = ref.select_atoms(vox_sel)
             _inds = voxels_around(vox_ag, vox_r, grid_params)
             assert _inds.dtype == int
             vox_indices = np.setdiff1d(vox_indices, _inds)
             print(f"Excluding {len(_inds)} voxels around:")
-            print("  Reference:", args.ref)
             print("  Selection:", vox_sel)
             print("  Radius:", vox_r)
 
@@ -441,48 +491,26 @@ def main():
     if len(vox_indices) == grid_params["size"]:
         vox_indices = None
 
-    _get_model_map = partial(
-        file_to_map,
-        shape=grid_params["shape"],
-        delta=grid_params["delta"],
-        origin=grid_params["origin"],
-        vox_indices=vox_indices,
-        sel=args.sel,
-        cutoff=args.cutoff,
-        tempfactor=args.tempfactor,
-        device=device,
-        chunk_size=chunk_size,
-        verbose=args.verbose,
-    )
+    u = mda.Universe(args.input, *args.traj)
+    print("Loading input file:", args.input)
+    if len(args.traj) > 0:
+        print("  Trajectory file(s):", *args.traj)
+    print("  Atoms:", len(u.atoms))
 
-    def run(iter):
-        tot_map = None
-        if args.progress:
-            iter = tqdm(iter)
-        for i, (filename, map_) in enumerate(iter):
-            if args.frame_out:
-                outfile = Path(filename)
-                outfile = outfile.with_stem(f"{outfile.stem}").with_suffix(".pkl")
-                map_.save(outfile)
-                print(f"Saving frame {i}: {outfile}")
-            tot_map = map_ if tot_map is None else tot_map + map_
-            if args.verbose:
-                print(f"Accumulating model map {i}/{len(args.input)}", flush=True)
-        return tot_map
 
-    if args.processes > 0:
-        mp.set_start_method("spawn")
-        with mp.Pool(args.processes) as pool:
-            iter = zip(args.input, pool.imap(_get_model_map, args.input))
-            tot_map = run(iter)
-    else:
-        iter = args.input
-        tot_map = run(iter)
+    if args.tempfactor is not None:
+        ag.tempfactors = args.tempfactor
+        print("  Applying B-factors:", args.tempfactor)
+    
+    t1 = time.time()
 
-    print("Averaging", len(args.input), "models.")
-    tot_map /= len(args.input)
+    atom_count = dict(Counter(ag.types))
+    if verbose:
+        print(f"{pid} Done computing map.")
+        print("  Atoms:", atom_count)
+        print(f"  Loading: {t1 - t0:.2f} s")
+        print(f"  Map: {t2 - t1:.2f} s", flush=True)
 
-    tot_map.to_dense().export(args.average_out, file_format="mrc")
     print("Output file:", args.average_out)
 
 

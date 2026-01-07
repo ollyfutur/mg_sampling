@@ -13,6 +13,7 @@ from MDAnalysis.analysis import align
 from MDAnalysis.analysis.base import AnalysisBase
 from MDAnalysis.analysis.results import ResultsGroup
 from MDAnalysis.analysis.distances import distance_array
+from MDAnalysis.transformations.base import TransformationBase
 
 from tqdm import tqdm
 

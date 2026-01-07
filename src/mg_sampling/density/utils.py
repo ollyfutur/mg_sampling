@@ -85,7 +85,7 @@ def voxels_around(ag: AtomGroup, radius: float, grid_params):
     return vox_indices
 
 
-def indices_to_mask(vox_indices, **grid_params):
+def indices_to_mask(vox_indices, grid_params):
     i, j, k = np.unravel_index(vox_indices, grid_params["shape"])
     mask = np.zeros(grid_params["shape"], dtype=bool)
     mask[i, j, k] = True
