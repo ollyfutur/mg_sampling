@@ -33,7 +33,7 @@ def get_stereochemistry(a: Atom, ag: AtomGroup) -> str:
     match tuple(ag):
         case (b, c):
             box = a.universe.dimensions
-            if calc_angles(b.position, a.position, c.position, box) <= 135:
+            if calc_angles(b.position, a.position, c.position, box) <= 2.3562:  # 135° = (90 + 180) / 2
                 return 'cis'
             else:
                 return 'trans'
@@ -44,7 +44,7 @@ def get_stereochemistry(a: Atom, ag: AtomGroup) -> str:
                 + calc_angles(b.position, a.position, d.position, box)
                 + calc_angles(c.position, a.position, d.position, box)
             )
-            if angle_sum <= 202.5:
+            if angle_sum <= 5.4978:  # 315° = (90+90+90 + 90+90+180) / 2
                 return 'fac'
             else:
                 return 'mer'
@@ -58,7 +58,7 @@ def get_stereochemistry(a: Atom, ag: AtomGroup) -> str:
                 + calc_angles(c.position, a.position, e.position, box)
                 + calc_angles(d.position, a.position, e.position, box)
             )
-            if angle_sum <= 472.5:
+            if angle_sum <= 11.7810:  # 675° = ((5×90+180) + (4×90+2×180)) / 2
                 return 'Cis'
             else:
                 return 'Trans'

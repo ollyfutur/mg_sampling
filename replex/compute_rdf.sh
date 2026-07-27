@@ -1,8 +1,9 @@
 #!/bin/bash
 
-refs="MG NA"
-sels="O_Water RNA"
-reps="rep??"
+#refs="MG NA"
+refs="MG NA CL"
+sels="RNA O_Water"
+reps="0_trajout.xtc"
 for ref in $refs; do
   for sel in $sels; do
     for rep in $reps; do

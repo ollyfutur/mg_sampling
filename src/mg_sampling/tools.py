@@ -111,7 +111,7 @@ def bayesian_bootstrap(
         standard_error=np.std(res, ddof=1, axis=-1),
     )
 
-def bootstrap(data, func, weights=None, n_resamples=200, rng=None, confidence_level=0.95):
+def bootstrap(data, statistic, weights=None, n_resamples=200, rng=None, confidence_level=0.95):
     """
     Classical bootstrap with weighted samples.
     """
@@ -127,7 +127,7 @@ def bootstrap(data, func, weights=None, n_resamples=200, rng=None, confidence_le
     for _ in range(n_resamples):
         inds = rng.choice(n_samples, size=n_samples, replace=True, p=weights)
         _data = data[inds]
-        res.append(func(_data))
+        res.append(statistic(_data))
     
     ci_l, ci_u = np.quantile(res, (q_l, q_u))
 
@@ -138,28 +138,28 @@ def bootstrap(data, func, weights=None, n_resamples=200, rng=None, confidence_le
     )
         
 
-def block_bootstrap(*inputs, func, n_blocks=5, skip=0):
+def block_bootstrap(data, statistic, n_blocks, n_resamples=200, rng=None, confidence_level=0.95):
     """
-    Perform a block analysis of the statistic `func` that takes as arguments one or more `inputs`
-    timeseries, by splitting each series in `n_blocks` of equal length. Returns the mean and
-    standard error of the mean on the `n_blocks`, ignoring the first `skip` blocks.
     """
-    n_frames = len(inputs[0])
-    if isinstance(skip, float):
-        skip = int(n_frames * skip)
-    block_inds = np.array_split(np.arange(skip, n_frames), n_blocks)
+    rng = np.random.default_rng(rng)
+    q_l, q_u = (1 - confidence_level) / 2, 1 - (1 - confidence_level) / 2
+    n_samples = len(data)
 
-    outputs = []
-    for inds in block_inds:
-        _inputs = (inp[inds] for inp in inputs)
-        outputs.append(func(*_inputs))
+    block_inds = np.array_split(np.arange(n_samples), n_blocks)
 
-    mean = np.mean(outputs, axis=0)
-    var = np.var(outputs, axis=0)
-    stderr = np.sqrt(var / n_blocks)
+    res = []
+    for _ in range(n_resamples):
+        inds = np.concatenate([block_inds[i] for i in rng.choice(n_blocks, size=n_blocks, replace=True)])
+        _data = data[inds]
+        res.append(statistic(_data))
 
-    return mean, stderr
+    ci_l, ci_u = np.quantile(res, (q_l, q_u), axis=0)
 
+    return BootstrapResult(
+        confidence_interval=ConfidenceInterval(ci_l, ci_u),
+        bootstrap_distribution=res,
+        standard_error=np.std(res, ddof=1, axis=0),
+    )
 
 def to_wsv(df: pd.DataFrame, path):
     with open(path, "w") as f:

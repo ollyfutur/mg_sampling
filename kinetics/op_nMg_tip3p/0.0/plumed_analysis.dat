@@ -1,9 +1,11 @@
+LOAD FILE=/net/sbp/sbpstore2/olanguin/mg_sampling/ligandexchange/LigandExchange.so
 
-LOAD FILE=/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/ligandexchange/LigandExchange.so
+mg: GROUP NDX_FILE=index.ndx NDX_GROUP=MG
+op: GROUP NDX_FILE=index.ndx NDX_GROUP=O_Phosphate
+ow: GROUP NDX_FILE=index.ndx NDX_GROUP=O_Water
 
-mg: GROUP NDX_FILE=../index.ndx NDX_GROUP=MG
-op: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Phosphate
-ow: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Water
+op_com: CENTER ATOMS=op
+dop: DISTANCE ATOMS=mg,op_com
 
 # (unscaled) barrier-flattening bias
 cv: LIGANDEXCHANGE ...
@@ -20,5 +22,5 @@ cv: LIGANDEXCHANGE ...
 ### Output ##########################################################
 #####################################################################
 
-PRINT ARG=cv.* STRIDE=5000 FILE=cv.COLVAR
+PRINT ARG=cv.*,dop STRIDE=5000 FILE=cv.COLVAR
 

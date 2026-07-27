@@ -13,6 +13,7 @@ from MDAnalysis.analysis import align
 from MDAnalysis.analysis.base import AnalysisBase
 from MDAnalysis.analysis.results import ResultsGroup
 from MDAnalysis.analysis.distances import distance_array
+from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.transformations.base import TransformationBase
 
 from tqdm import tqdm
@@ -21,6 +22,18 @@ STANDARD_NAMES = {
     "O1P": "OP1",
     "O2P": "OP2",
 }
+
+class TransformationFromFunction(TransformationBase):
+    def __init__(self, func, *args, max_threads=1, parallelizable=True, **kwargs):
+        super().__init__(max_threads=max_threads,
+                          parallelizable=parallelizable)
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def _transform(self, ts):
+        self.func(*self.args, **self.kwargs)
+        return ts
 
 def unwrap_sequential(ag: AtomGroup, inplace=True):
     pos = ag.positions
@@ -69,10 +82,9 @@ def check_alignable(mob_align, ref_align):
 def wrap_around(ag1, position):
     """Wraps atoms in `ag1` in the unit cell centered at `position`"""
     position = np.asarray(position)
-    box_center = ag1.ts.triclinic_dimensions.sum(axis=0) / 2
-    ag1.translate(box_center - position)
-    ag1.wrap()
-    ag1.translate(position - box_center)
+    vectors = ag1.positions - position
+    min_vectors = minimize_vectors(vectors, ag1.ts.dimensions)
+    ag1.positions = position + min_vectors
 
 
 def wrap_around_atomgroup(ag1, ag2):
@@ -134,9 +146,9 @@ def local_align(
     reference: AtomGroup | Universe,
     align_sel: str = "nucleic",
     ref_align_sel: str | None = None,
-    align_radius: float | None = None,
+    align_radius: float = 0.0,
     out_sel: str = "all",
-    out_radius: float | None = None,
+    out_radius: float = 10.0,
     reorder: bool = False,
     verbose: bool = False,
 ) -> mda.Universe:

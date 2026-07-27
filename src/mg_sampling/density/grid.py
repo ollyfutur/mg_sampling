@@ -133,6 +133,9 @@ class Grid(gridData.Grid):
     def to_dense(self):
         return self
 
+    def astype(self, dtype):
+        return self.__class__(self.grid.astype(dtype), self.edges)
+
 
 class SparseGrid(object):
     """
@@ -239,6 +242,9 @@ class SparseGrid(object):
                 and np.array_equal(self.vox_indices, other.vox_indices)
                 and all(map(np.allclose, self.edges, other.edges))
             )
+
+    def astype(self, dtype):
+        return self.__class__(self.data.astype(dtype), self.vox_indices, self.edges)
 
 
 def _get_binary_op_method(opname):

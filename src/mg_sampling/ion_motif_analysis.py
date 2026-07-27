@@ -6,6 +6,7 @@ import MDAnalysis as mda
 import numpy as np
 
 from mg_sampling.analysis import IonNucleicAnalysis
+from mg_sampling.density.align import standardize_names
 
 def main():
     parser = argparse.ArgumentParser(
@@ -22,6 +23,7 @@ def main():
     parser.add_argument('--outer_cutoff', type=float, default=4.8, help="(4.8) Outer-sphere cutoff radius in Å; set to zero or negative to skip outer-sphere analysis")
     parser.add_argument('--output-distances', action='store_true', help="Store distances to inner (and outer) ligand atoms")
     parser.add_argument('--drop-empty', action='store_true', help="Discard frame for ion with no ligand")
+    parser.add_argument('--standardize', action='store_true', help="Standardize some atom names (O1P->OP1…)")
     parser.add_argument('-o', '--outfile', type=str, default='ion_analysis.csv', help="(ion_analysis.csv) Output file (.csv or .parquet)")
     parser.add_argument('--start', type=int, default=0, help="(0) Starting frame")
     parser.add_argument('--stop', type=int, default=None, help="(None) Ending frame")
@@ -33,6 +35,8 @@ def main():
         args.outer_cutoff = None
 
     u = mda.Universe(args.topfile, args.trajfiles) if args.trajfiles else mda.Universe(args.topfile)
+    if args.standardize:
+        standardize_names(u)
     anal = IonNucleicAnalysis(
         u,
         ionsel=args.sel,
@@ -43,7 +47,10 @@ def main():
         keep_empty=(not args.drop_empty),
     )
     print(f"Running analysis with {args.n_workers} processes...")
-    anal.run(start=args.start, stop=args.stop, step=args.step, backend='dask', n_workers=args.n_workers)
+    if args.n_workers is not None:
+        anal.run(start=args.start, stop=args.stop, step=args.step, backend='dask', n_workers=args.n_workers)
+    else:
+        anal.run(start=args.start, stop=args.stop, step=args.step, backend='serial')
     df = anal.to_pandas()
 
     if args.outfile.endswith(".parquet"):

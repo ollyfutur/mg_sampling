@@ -1,5 +1,4 @@
-
-LOAD FILE=/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/ligandexchange/LigandExchange.so
+LOAD FILE=../../../ligandexchange/LigandExchange.so
 
 mg: GROUP NDX_FILE=../index.ndx NDX_GROUP=MG
 op: GROUP NDX_FILE=../index.ndx NDX_GROUP=O_Phosphate

@@ -261,6 +261,7 @@ class ForwardDensity(AnalysisBase):
             vox_indices=self.vox_indices,
             cutoff=self.cutoff,
             device=self.device,
+            chunk_size=self.chunk_size,
         )
         if self.timeseries:
             self.results.timeseries.append(map_)
@@ -505,7 +506,7 @@ def main():
     t1 = time.time()
 
     atom_count = dict(Counter(ag.types))
-    if verbose:
+    if args.verbose:
         print(f"{pid} Done computing map.")
         print("  Atoms:", atom_count)
         print(f"  Loading: {t1 - t0:.2f} s")

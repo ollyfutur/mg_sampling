@@ -40,6 +40,8 @@ processed.top
 *.wsv
 *COLVAR*
 *HILLS*
+*.tga
+*.zip
 
 # Backup output
 \#*\#
@@ -47,3 +49,4 @@ bck.*
 
 # Other
 sync_data.sh
+
