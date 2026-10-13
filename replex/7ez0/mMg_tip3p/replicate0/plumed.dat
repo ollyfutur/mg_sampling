@@ -1,6 +1,6 @@
 
-LOAD FILE=/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/ligandexchange/LigandExchange.so
-LOAD FILE=/leonardo_work/EUHPC_R02_136/Olivier/mg_sampling/replex_biasvalue/ReplexBiasValue.so
+LOAD FILE=/leonardo_work/Sis25_bussi/Olivier/mg_sampling/ligandexchange/LigandExchange.so
+LOAD FILE=/leonardo_work/Sis25_bussi/Olivier/mg_sampling/replex_biasvalue/ReplexBiasValue.so
 
 rmsd: RMSD REFERENCE=../ref_subset.pdb TYPE=SIMPLE
 

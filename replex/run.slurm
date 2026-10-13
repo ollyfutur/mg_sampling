@@ -17,7 +17,7 @@ export GMX_ENABLE_DIRECT_GPU_COMM=true
 
 for rep in rep??; do
     gmx_mpi grompp -f $PROJECT_DIR/common/run_light.mdp -p processed.top -c $rep/input.gro -o $rep/run.tpr
-    gmx_mpi convert-tpr -s $rep/run.tpr -until 200000 -o $rep/run.tpr
+    gmx_mpi convert-tpr -s $rep/run.tpr -until 300000 -o $rep/run.tpr
 done
 
 srun gmx_mpi mdrun -multidir rep?? -deffnm run -cpi run.cpt -plumed ../plumed.dat -maxh 23.9
