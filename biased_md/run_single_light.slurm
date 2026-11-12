@@ -17,6 +17,6 @@ export GMX_ENABLE_DIRECT_GPU_COMM=true
 if [ ! -f run.tpr ]; then
   gmx_mpi grompp -f $PROJECT_DIR/common/run_light.mdp -p ../processed.top -c input.gro -o run.tpr
 fi
-gmx_mpi convert-tpr -s run.tpr -until 200000 -o run.tpr
+gmx_mpi convert-tpr -s run.tpr -until 400000 -o run.tpr
 
 srun gmx_mpi mdrun -deffnm run -cpi run.cpt -plumed ../plumed.dat -maxh 23.9

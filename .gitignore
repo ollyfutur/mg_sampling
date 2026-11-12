@@ -8,6 +8,7 @@ replex_biasvalue/
 
 # Outdated
 archive/
+benchmark/
 
 # Python stuff
 .venv/

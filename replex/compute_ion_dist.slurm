@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1G
 #SBATCH --gres=gpu:0
-#SBATCH --account=Sis25_bussi
+#SBATCH --account=IscrB_MGReplex
 #SBATCH --partition=boost_usr_prod
 #SBATCH --qos=boost_qos_dbg
 

@@ -5,7 +5,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --ntasks-per-node=12
-#SBATCH --account=Sis25_bussi
+#SBATCH --account=IscrB_MGReplex
 #SBATCH --partition=boost_usr_prod
 
 module purge
