@@ -1,6 +1,7 @@
-# External repositories
+# External repositories or untracked
 ligandexchange/
 replex_biasvalue/
+casp17/
 
 # Hidden files
 .*
