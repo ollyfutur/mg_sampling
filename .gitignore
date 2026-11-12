@@ -2,6 +2,8 @@
 ligandexchange/
 replex_biasvalue/
 casp17/
+build/
+graphics/
 
 # Hidden files
 .*
@@ -21,6 +23,7 @@ __pycache__/
 *.csv
 fes.dat
 *.edr
+*.err
 *.gro
 *.log
 *.map
