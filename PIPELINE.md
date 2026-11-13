@@ -272,7 +272,8 @@ One notebook at a time, in the order of section 7. Conventions:
 - Each notebook starts with its prerequisites (pipeline steps and files) and outputs, imports
   what it uses, and writes figures to `paper/figures/`.
 
-Status: `01-MetadBiasFit` revised (to be run).
+Status: `01-MetadBiasFit` revised; `02-Kinetics` revised (figures and printed rates identical
+to the previous version).
 
 ## Refactoring implications (preliminary)
 
