@@ -261,6 +261,19 @@ Also removed the `read_exchanges` and `compare_density` entry points (their modu
 exist) and reinstalled the package. The remaining commands are `ion_motif_analysis`,
 `forward_density` and `align`.
 
+## Revising the paper notebooks (in progress)
+
+One notebook at a time, in the order of section 7. Conventions:
+- Old outputs of `paper/` (figures, CSV/parquet/pickle caches, maps, `.tex` tables, `graphics/`
+  renders) were moved to `paper/archive/` (ignored) on 2026-11-13; every output is regenerated.
+- Plot style in `paper/paper.mplstyle` (`plt.style.use("paper.mplstyle")`, identical to the
+  former seaborn whitegrid + rcParams); shared labels and colors in `paper/labels.py`,
+  imported explicitly. `common.py` (wildcard import) is deleted once no notebook uses it.
+- Each notebook starts with its prerequisites (pipeline steps and files) and outputs, imports
+  what it uses, and writes figures to `paper/figures/`.
+
+Status: `01-MetadBiasFit` revised (to be run).
+
 ## Refactoring implications (preliminary)
 
 - **Needed for reproduction, keep:** `classes.MetadSim` (bias fit), `ion_motif_analysis`,

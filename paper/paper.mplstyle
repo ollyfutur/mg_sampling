@@ -1,0 +1,33 @@
+# Plot style for the paper figures: seaborn "whitegrid", 8 pt font, constrained layout.
+# The default colormap stays matplotlib's (seaborn's "rocket" needs `import seaborn`).
+
+font.size: 8.0
+figure.constrained_layout.use: True
+
+# seaborn whitegrid
+figure.facecolor: white
+axes.facecolor: white
+axes.edgecolor: .8
+axes.labelcolor: .15
+axes.axisbelow: True
+axes.grid: True
+axes.spines.left: True
+axes.spines.bottom: True
+axes.spines.right: True
+axes.spines.top: True
+grid.color: .8
+grid.linestyle: -
+text.color: .15
+font.family: sans-serif
+font.sans-serif: Arial, DejaVu Sans, Liberation Sans, Bitstream Vera Sans, sans-serif
+lines.solid_capstyle: round
+patch.edgecolor: w
+patch.force_edgecolor: True
+xtick.direction: out
+ytick.direction: out
+xtick.color: .15
+ytick.color: .15
+xtick.top: False
+xtick.bottom: False
+ytick.left: False
+ytick.right: False
