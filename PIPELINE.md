@@ -114,8 +114,8 @@ For each system, run in its folder:
 
 ### 4b. Bias fit → `metad/op_mMg_tip3p/bias_params.wsv` (E, sX, sY)
 `metad/fit_bias.py op_mMg_tip3p` (reads `static.COLVAR`, `fes.dat`; never overwrites). ✅
-The existing file was produced by `notebooks/02-BiasFitting.ipynb` (L-BFGS-B) and is kept as
-the reference. L-BFGS-B is unreliable on this non-smooth loss (it reaches a different minimum
+The existing file was produced by `notebooks/02-BiasFitting.ipynb` (L-BFGS-B; at tag
+`pre-notebooks-removal`) and is kept as the reference. L-BFGS-B is unreliable on this non-smooth loss (it reaches a different minimum
 for each scipy version, never the reference), so the script uses Nelder-Mead, which gives the
 same result with scipy 1.13–1.17:
 
@@ -158,8 +158,8 @@ diuridine `bias_params.wsv`). ✅
 Three steps: WHAM over the 7 runs; α(λ) such that ΔG_bind doesn't depend on λ
 (deterministic); ladder λ_k (12 replicas, λ 0 → 1) with uniform exchange acceptance, after
 resampling M = 150 independent systems (stochastic, `--seed`).
-The existing files were produced by `notebooks/04-FittingRamp.ipynb` (unseeded) and are kept
-as the reference. Checks:
+The existing files were produced by `notebooks/04-FittingRamp.ipynb` (unseeded; at tag
+`pre-notebooks-removal`) and are kept as the reference. Checks:
 - α: the refit at the saved λ_k matches `opt_alpha_ramp.txt` within 5·10⁻⁶ kJ/mol.
 - λ_k: refits with seeds 0–2 differ from the saved ladder by ≤ 0.013; on their resampled
   data, the saved ladder gives acceptances 0.58–0.62 (refits: uniform 0.595–0.600).
@@ -240,33 +240,30 @@ of the diuridine fit; the Con2-2.2A half maps come from the DasLab Water-CryoEM-
 repository; replex runs are 300 ns; motif files will be regenerated during the analysis
 refactor; density will be redone; CASP17 is out of scope for now.
 
-## Removing `notebooks/` (in progress)
+## Removing `notebooks/` (done)
 
 Rule: a script produces anything a later stage reads; notebooks (`paper/`) only read and plot.
-No figure from `notebooks/` is kept. Only two notebooks produce pipeline inputs:
+No figure from `notebooks/` is kept. Only two notebooks produced pipeline inputs:
 
 1. ✅ Bias fit (`02-BiasFitting`) → `metad/fit_bias.py`. Done alongside it: `tools.read_plumed_fes`
    no longer drops duplicate times (`fes.dat` has no `time` column).
 2. ✅ Ramp fit (`04-FittingRamp`) → `kinetics/fit_ramp.py`.
 3. ✅ Package cleanup: `bias.py` keeps `bias_fn` and the fit constants; `classes.py` keeps
    `Sim`, `MetadSim`; removed `optimize_scalings.py` (and its entry point), `stringbase.py`, `plot.py`.
-4. ⏸ Remove `notebooks/` (next): tag the current commit (e.g. `pre-notebooks-removal`), list
-   untracked files in `notebooks/` (`figures/`, ~400 MB of `*.mrc`, `*.csv`, `*.pdb`) for
-   confirmation, `git rm -r notebooks/`, check for remaining references, update this file.
+4. ✅ Removed `notebooks/`. The tracked files are at tag `pre-notebooks-removal` (`91ebd24`).
+   The ignored files (`archive/`, maps, CSVs) were deleted too; the only data without a
+   copy elsewhere was an unused unsharpened EMD-42499 map (2025-11-20) and the old
+   `archive/` notebooks and figures.
 
-Pending: remove the dangling `read_exchanges` and `compare_density` entry points from
-`pyproject.toml` (their modules no longer exist)? Reinstall the package (`uv pip install -e .`)
-to drop the stale `optimize_scalings` command from `.venv/bin`.
-Uncommitted so far: `metad/fit_bias.py`, `kinetics/fit_ramp.py`, the `src/mg_sampling` changes
-(`tools.py` fix, `bias.py`, `classes.py`, 3 modules removed) and `pyproject.toml`.
+Also removed the `read_exchanges` and `compare_density` entry points (their modules no longer
+exist) and reinstalled the package. The remaining commands are `ion_motif_analysis`,
+`forward_density` and `align`.
 
 ## Refactoring implications (preliminary)
 
-- **Needed for reproduction, keep:** `classes.MetadSim` (bias fit), `optimize_scalings`,
-  `ion_motif_analysis`, `tools`, `bias`, `constants`, `parallel`; from `density.align`:
+- **Needed for reproduction, keep:** `classes.MetadSim` (bias fit), `ion_motif_analysis`,
+  `tools`, `bias`, `constants`, `parallel`; from `density.align`:
   `reorder_residue_atoms`, `standardize_names`, `check_alignable`.
-- **Move into `paper/`** (or turn into scripts): the bias fit (`notebooks/02-BiasFitting`)
-  and scaling optimization (`notebooks/04-FittingRamp`). Then the rest of `notebooks/` can go.
 - **Make scripts take arguments** instead of hand-edited variables (`system`, `replicate`,
   `from_rep`, `to_rep`, `forcefields`, `refs`), so one command per step reproduces all systems.
 - **Unify conventions:** `remux` vs `remuxed`; COLVAR suffixes; the `replicate0/` level in `plain_md`.
