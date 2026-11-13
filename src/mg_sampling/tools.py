@@ -191,7 +191,7 @@ def read_plumed_fes(path):
     cv_ranges : tuple of 1d ndarrays
     fes : ndarray
     """
-    df = read_plumed(path)
+    df = read_plumed(path, drop_duplicates=False)
     d = (df.shape[1] - 1) // 2
     df = df.set_index(list(df.columns[:d])).sort_index()
     fes_shape = tuple([len(x) for x in df.index.levels])

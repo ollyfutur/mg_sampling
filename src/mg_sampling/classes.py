@@ -1,5 +1,4 @@
 from pathlib import Path
-import glob
 
 import numpy as np
 import pandas as pd
@@ -37,35 +36,3 @@ class MetadSim(Sim):
         self.Y = self.x + self.y - 6
         self.bias = self.colvar['metad.bias'].to_numpy()
         self.weights = np.exp(self.bias / RT)
-    
-class KineticSim(Sim):
-    def __init__(self, path: Path | str, name: str = "Kinetics", colvar_file: str = 'COLVAR'):
-        super().__init__(path, name, colvar_file)
-        self.scaling = self.path.name
-
-class KineticSims:
-    def __init__(self, path: Path | str, name: str = "Kinetics", colvar_file: str = 'COLVAR'):
-        self.path = Path(path)
-        self.scalings = glob.glob('[0-9].[0-9]', root_dir=self.path)
-        self.scalings.sort(key=float)
-        self.sims = [
-            KineticSim(self.path / scaling, colvar_file=colvar_file)
-            for scaling in self.scalings
-        ]
-    
-    def __getitem__(self, i: int):
-        return self.sims[i]
-
-class ReplexSims:
-    def __init__(self, path: Path | str, name: str = "Replex"):
-        self.path = Path(path)
-        self.repdirs = glob.glob('rep*', root_dir=self.path).sort()
-        self.nrep = len(self.repdirs)
-        self.sims = [
-            Sim(
-                self.path / repdir,
-                f"{name} (Replica {i})",
-                colvar_file=[f'bias.COLVAR.{i}', f'rmsd.COLVAR.{i}'],
-            )
-            for i, repdir in enumerate(self.repdirs)
-        ]
