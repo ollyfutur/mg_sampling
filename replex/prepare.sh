@@ -1,11 +1,14 @@
 #!/bin/bash
 
-system="7ez0_noion"
+systems="7ez0 7ez0_noion"
 forcefields="mMg_tip3p"
-replicate=1
-from_rep=8
-to_rep=15
-n_rep=$((to_rep-from_rep+1))
+replicates="0 1"
+n_rep=8
+
+# replicate k uses equilibrated replicas 8k to 8k+7
+for system in $systems; do for replicate in $replicates; do
+from_rep=$((n_rep*replicate))
+to_rep=$((from_rep+n_rep-1))
 
 for forcefield in $forcefields; do
    path=$PROJECT_DIR/structures/$system/$forcefield
@@ -54,3 +57,5 @@ EOF
       done
    )
 done
+
+done; done

@@ -4,7 +4,7 @@ to_rep=7
 #####
 
 echo "PDBFixer ..."
-#pdbfixer --pdbid=7ez0 --add-atoms=heavy --keep-heterogens=none --output=7ez0_fixed.pdb
+pdbfixer --pdbid=7ez0 --add-atoms=heavy --keep-heterogens=none --output=7ez0_fixed.pdb
 
 echo "Making topology ..."
 $GMX pdb2gmx -f 7ez0_fixed.pdb -ff amber14sb_mMg_tip3p -water tip3p -noh &>> prepare.log

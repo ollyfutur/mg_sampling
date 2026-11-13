@@ -11,6 +11,7 @@ for ff in $forcefields; do
 
     cp $PROJECT_DIR/structures/triuridine/$ff/equil.gro $dirname/
     cp $PROJECT_DIR/structures/triuridine/$ff/processed.top $dirname/
+    cp $PROJECT_DIR/metad/op_${ff}/bias_params.wsv $dirname/
 
     # Generate index file
     $GMX make_ndx -f $dirname/equil.gro -o $dirname/index.ndx << EOF

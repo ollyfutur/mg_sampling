@@ -1,6 +1,6 @@
 #!/bin/bash
 from_rep=0
-to_rep=15
+to_rep=7
 #####
 
 echo "PDBFixer ..."

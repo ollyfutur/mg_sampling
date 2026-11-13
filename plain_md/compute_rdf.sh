@@ -1,6 +1,6 @@
 #!/bin/bash
 
-refs="CL"
+refs="MG NA CL"
 sels="O_Water RNA"
 reps="rep??"
 for ref in $refs; do

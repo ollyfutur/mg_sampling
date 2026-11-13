@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=anal
 #SBATCH -N 1
-#SBATCH --time=00:30:00
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --ntasks-per-node=12
@@ -21,7 +20,9 @@ done
 
 wait
 
+# Same suffix as bias.COLVAR.<i>: index of the replica within the replicate
+i=0
 for rep in rep??; do
-   i=$((10#${rep:(-2)}))
    mv $rep/cv.COLVAR $rep/cv.COLVAR.${i}
+   i=$((i+1))
 done

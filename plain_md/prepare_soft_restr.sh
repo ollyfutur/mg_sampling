@@ -1,19 +1,18 @@
 #!/bin/bash
 
-#systems="7ez0 7ez0_noion"
 systems="7ez0"
 forcefields="nMg_tip3p"
-from_rep=4
-to_rep=8
+from_rep=0
+to_rep=7
 n_rep=$((to_rep-from_rep+1))
 
 for system in $systems; do
    mkdir -p $system
    for forcefield in $forcefields; do
       path=$PROJECT_DIR/structures/$system/$forcefield
-      mkdir -p $system/${forcefield}_soft
+      mkdir -p $system/${forcefield}_soft/replicate0
       (
-         cd $system/${forcefield}_soft
+         cd $system/${forcefield}_soft/replicate0
 
          ### Generate index file
          gmx_mpi make_ndx -f $path/rep00/equil.tpr -o index.ndx << EOF
@@ -32,7 +31,7 @@ EOF
          ### Generate reference for PLUMED RMSD
          echo 'RNA_subset' | gmx_mpi editconf -f $path/rep00/ions2.gro -n index.ndx -o ref_subset.pdb
 
-         sh ../../generate_plumed_soft.sh > plumed.dat
+         sh ../../../generate_plumed_soft.sh > plumed.dat
 
          cp $path/processed.top .
          ### Generate each replica

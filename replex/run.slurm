@@ -2,13 +2,11 @@
 #SBATCH --job-name=replex
 #SBATCH -N 2
 #SBATCH --time=24:00:00
-#SBATCH --time=00:30:00
 #SBATCH --cpus-per-task=8
 #SBATCH --ntasks-per-node=4
 #SBATCH --gres=gpu:4
 #SBATCH --account=Sis25_bussi
 #SBATCH --partition=boost_usr_prod
-#SBATCH --qos=boost_qos_dbg
 
 module purge
 module load plumed/2.10/2.10bnl-patch

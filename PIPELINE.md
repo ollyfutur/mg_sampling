@@ -18,6 +18,7 @@ flowchart TD
 
   PREP -->|diuridine| METAD[metad/op_mMg_tip3p]
   METAD -->|metad/fit_bias.py| BP[(bias_params.wsv)]
+  BP -->|copy, for plotting| METAD3[metad/triuridine]
   BP --> KIN[kinetics/op_mMg_tip3p/λ]
   PREP -->|diuridine| KIN
   KIN -->|kinetics/fit_ramp.py| OPT[(opt_scalings_ramp.txt<br/>opt_alpha_ramp.txt)]
@@ -40,6 +41,7 @@ flowchart TD
   EM --> DENS
 
   METAD --> NB01[01-MetadBiasFit]
+  METAD3 --> NB01
   KIN --> NB02[02-Kinetics]
   ANA --> NB04R[04-Replex]
   ANA --> NB04M[04-MotifAnalysis]
@@ -60,8 +62,8 @@ Out of scope for now: CASP17 (`casp17/`, `07-CASP17`). Deferred: density maps (t
 | GROMACS 2023.5 patched with PLUMED 2.10 (`gromacs/2023/2023.5-plumed-2.10b`, `plumed/2.10/2.10bnl-patch` on Leonardo) | cluster modules | ✅ |
 | PLUMED plugins `LigandExchange.so`, `ReplexBiasValue.so` | external repos `ligandexchange/`, `replex_biasvalue/` (`make`), see README | ✅ (commit/version to pin ❓) |
 | pdbfixer | `pyproject.toml` (git pin) | ✅ |
-| Python package `mg_sampling` | `src/`, `pyproject.toml` | ⚠️ `cryomap`, `array-api-compat` missing from dependencies |
-| cryomap (density maps) | not in repo | ❓ source and version |
+| Python package `mg_sampling` | `src/`, `pyproject.toml` | ✅ |
+| cryomap (density maps) | `pyproject.toml`, pinned at commit `f4438f0` of the private repo `github.com/ollyfutur/cryomap` (installed over SSH) | ✅ |
 
 ## 1. Force fields
 
@@ -75,9 +77,9 @@ Out of scope for now: CASP17 (`casp17/`, `07-CASP17`). Deferred: density maps (t
 |---|---|---|
 | `structures/{9CBU,9CBW,9CBX,9CBY,7EZ0}_fixed.pdb` | `structures/get_ref_files.sh` (RCSB + pdbfixer) | ✅ |
 | `structures/9cbu/9CBU_fixed.pdb` | copy of the above? | ⚠️ |
-| `structures/*/ff/7ez0_fixed.pdb` | pdbfixer line in each `prepare.sh` (`--keep-heterogens=all` for 7ez0, `none` for 7ez0_noion) | ⚠️ commented out in `7ez0/mMg_tip3p` and `7ez0_nomg` |
+| `structures/*/ff/7ez0_fixed.pdb` | pdbfixer line in each `prepare.sh` (`--keep-heterogens=all` for 7ez0, `none` for 7ez0_noion and 7ez0_nomg) | ✅ |
 | `density/emd_42499.mrc` (+ 42498, 31385, half maps 1/2) | `density/get_ref_files.sh` (EMDB) | ✅ |
-| `density/emd_42499_Con2-2.2A_half_{A,B}.mrc` (used by 05, 06) | downloaded from https://github.com/DasLab/Water-CryoEM-ribozyme/tree/main/maps | ⚠️ add the download to `density/get_ref_files.sh` |
+| `density/emd_42499_Con2-2.2A_half_{A,B}.mrc` (used by 05, 06) | `density/get_ref_files.sh`, from https://github.com/DasLab/Water-CryoEM-ribozyme/tree/main/maps (commit `d470420`), with the header set to volume; byte-identical to the files used | ✅ |
 | `structures/diuridine/diuridine.pdb`, `structures/triuridine/triuridine.gro` | taken from another in-group project; raw input | ✅ |
 
 ## 3. System preparation (`structures/<system>/<ff>/`)
@@ -93,14 +95,14 @@ For each system, run in its folder:
 5. `../../ion_motif_analysis.sh` → `repNN/MG_motifs.parquet` (before minimization),
    `repNN/MG_motifs_equil.parquet` (after equilibration)
 
-| System / ff | Replicas on disk | Used by | Status |
+| System / ff | Replicas (`prepare.sh` range) | Used by | Status |
 |---|---|---|---|
-| `7ez0/mMg_tip3p` | 24 | replex, plain_md | ⚠️ `prepare.sh` has `from_rep=16 to_rep=23` (last extension only) |
-| `7ez0/nMg_tip3p` | 16 | plain_md (+ `_soft`) | ✅ |
-| `7ez0_noion/mMg_tip3p` | 24 | replex, plain_md | ⚠️ same as above |
-| `7ez0_noion/nMg_tip3p` | 8 | plain_md | ✅ |
-| `7ez0_nomg/mMg_tip3p` | 8 | plain_md | ⚠️ motif files missing (not read by the paper?) |
-| `1naj/mMg_tip3p` | — | biased_md | ✅ |
+| `7ez0/mMg_tip3p` | 00–15 | replex (00–15), plain_md (00–07) | ✅ |
+| `7ez0/nMg_tip3p` | 00–07 | plain_md (+ `_soft`) | ✅ |
+| `7ez0_noion/mMg_tip3p` | 00–15 | replex (00–15), plain_md (00–07) | ✅ |
+| `7ez0_noion/nMg_tip3p` | 00–07 | plain_md | ✅ |
+| `7ez0_nomg/mMg_tip3p` | 00–07 | plain_md | ⚠️ motif files missing (not read by the paper?) |
+| `1naj/mMg_tip3p` | 00–02 | biased_md | ✅ |
 | `diuridine/mMg_tip3p` | single box | metad, kinetics | ✅ own `prepare.sh` (min + equil included, local `min.mdp`/`equil.mdp`) |
 | `triuridine/mMg_tip3p` | single box | metad, kinetics | ✅ same |
 | `9cbu` | PDB only | motif reference | ✅ `structures/9cbu/ion_motif_analysis.sh` → `MG_motifs.parquet` |
@@ -125,7 +127,7 @@ same result with scipy 1.13–1.17:
 | `fit_bias.py` (Nelder-Mead) | 38.471147 | 0.102034 | 0.292172 | 4.640 |
 
 `metad/triuridine/op_mMg_tip3p/bias_params.wsv` is a copy of the diuridine fit (no
-separate fit). ⚠️ The copy step isn't scripted.
+separate fit), made by `metad/triuridine/prepare.sh`, so that script runs after the fit. ✅
 
 ### 4c. Kinetics at constant scaling (diuridine)
 `kinetics/prepare.sh` (needs `bias_params.wsv`) → `op_mMg_tip3p/{0.6…1.2}/plumed.dat`;
@@ -173,25 +175,25 @@ those runs are no longer on disk and the paper doesn't read them.
 ### 5a. Replica exchange (`replex/<sys>/mMg_tip3p/replicate{0,1}/`)
 Systems `7ez0`, `7ez0_noion`; replicate 0 uses equilibrated replicas 00–07, replicate 1
 uses 08–15.
-1. `replex/prepare.sh` (edit `system`, `replicate`, `from_rep`, `to_rep` per call) →
-   `index.ndx`, `ref_subset.pdb`, `bias_params.wsv`, `opt_*_ramp.txt`, `plumed.dat` (via
+1. `replex/prepare.sh` (all systems and replicates in one call) → `index.ndx`, `ref_subset.pdb`, `bias_params.wsv`, `opt_*_ramp.txt`, `plumed.dat` (via
    `generate_plumed.sh`), `processed.top`, `repNN/input.gro`.
 2. `replex/run.slurm` → `repNN/run.{tpr,xtc}`, `bias.COLVAR.<i>`, `rmsd.COLVAR.<i>`,
    `bias_index.xvg` (PLUMED outputs; `<i>` = replica index 0–7). Final length 300 ns
-   (`-until 300000`). ⚠️ The committed `run.slurm` is set to debug QOS / 30 min (two
-   `--time` lines); restore the production settings.
+   (`-until 300000`). ✅
 
 ### 5b. Plain MD (`plain_md/<sys>/<ff>/replicate0/repNN`, 8 replicas each)
 `7ez0/{mMg,nMg,nMg_soft}`, `7ez0_noion/{mMg,nMg}`, `7ez0_nomg/mMg`.
-1. `plain_md/prepare.sh` (soft: `prepare_soft_restr.sh` + `generate_plumed_soft.sh`) →
-   `plumed.dat` (RMSD restraint), `processed.top`, `repNN/input.gro`.
-2. `plain_md/run_single_light.slurm` in each `repNN/` (all final systems; `-until 600000`
-   = 600 ns). ⚠️ The notebooks stop `7ez0_nomg` at frame 4000 (400 ns): check whether those
-   runs are shorter. `run_multi*.slurm`, `run_single_light_noappend.slurm` and `run.slurm`
-   are not needed.
-⚠️ `prepare.sh` creates `<sys>/<ff>/repNN`, but the data (and every notebook) use
-`<sys>/<ff>/replicate0/repNN`: the `replicate0/` level was added by hand.
-⚠️ `plain_md/run.slurm` is broken (`$rep` undefined).
+1. `plain_md/prepare.sh` (all systems in one call; soft: `prepare_soft_restr.sh` +
+   `generate_plumed_soft.sh`) → `replicate0/{plumed.dat` (RMSD restraint), `processed.top`,
+   `repNN/input.gro}`.
+2. `sbatch $PROJECT_DIR/plain_md/run_single_light.slurm` in each `repNN/` (600 ns), except
+   `7ez0_nomg`: `sbatch $PROJECT_DIR/plain_md/run_single_light.slurm 400000` (400 ns, which
+   is why the notebooks read it up to frame 4000).
+For the three `7ez0` systems (`mMg`, `nMg`, `nMg_soft`), `rep00–03` started from an earlier
+preparation with the same recipe, composition, equilibration and residue numbering:
+`structures/7ez0/archive/<ff>/rep00–03/equil.gro` (on disk, not tracked). `rep04–07` and all
+other systems started from the current `structures/` replicas. A rerun from the current
+replicas is statistically equivalent.
 
 ### 5c. Biased MD on DNA (`biased_md/1naj/mMg_tip3p`)
 `biased_md/prepare.sh` (λ index 7, uses `bias_params.wsv` + `opt_*_ramp.txt`) +
@@ -204,12 +206,12 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 
 | Output | Produced by | Read by | Status |
 |---|---|---|---|
-| `replex/.../repNN/cv.COLVAR.<n>` | `replex/analysis.slurm` (`generate_plumed_analysis.sh` + `plumed driver`) | 04-Replex | ⚠️ suffix `<n>` is the folder number (08–15 in replicate 1), unlike `bias.COLVAR.<i>` (0–7) |
+| `replex/.../repNN/cv.COLVAR.<i>` | `replex/analysis.slurm` (`generate_plumed_analysis.sh` + `plumed driver`) | 04-Replex | ✅ `<i>` = replica index 0–7 within the replicate, as for `bias.COLVAR.<i>` (replicate 1 files renamed from 8–15 on 2026-11-13) |
 | `replex/.../repNN/dist_{MG_O_Phosphate,O_Phosphate_MG}.xvg` | `replex/compute_ion_dist.slurm` | 04-Replex | ✅ |
 | `{replex,plain_md}/.../repNN/{MG,NA}_motifs.parquet` | `replex/ion_motif_analysis.{sh,slurm}`, `plain_md/ion_motif_analysis.sh` (CLI `ion_motif_analysis`) | 03, 04-MotifAnalysis, 06 | 🔁 to be rerun during the analysis refactor; keep one variant (the two replex scripts differ: `--outer_cutoff 5.0 --standardize` vs `--outer_cutoff 0`) |
-| `replex/7ez0/mMg_tip3p/replicate0/remuxed/0_trajout.xtc` | `replex/remux.sh` (`trjcat -demux`) | — | ✅ |
-| `.../remuxed/0_{MG,NA}_RNA_rdf.xvg` | `.../remuxed/compute_rdf.sh` | 03 | ⚠️ 03 reads `remux/`, the files are in `remuxed/` |
-| `plain_md/7ez0/nMg_tip3p/replicate0/rep00/{MG,NA}_RNA_rdf.xvg` | `plain_md/compute_rdf.sh` | 03 | ⚠️ script currently set to `refs="CL"` |
+| `replex/7ez0/mMg_tip3p/replicate0/remuxed/0_trajout.xtc` | `replex/remux.sh` (`trjcat -demux`), run in `replicate0/` | — | ✅ |
+| `.../remuxed/0_{MG,NA,CL}_RNA_rdf.xvg` | `replex/compute_rdf.sh`, run in `remuxed/` | 03 | ✅ |
+| `plain_md/7ez0/nMg_tip3p/replicate0/rep00/{MG,NA,CL}_RNA_rdf.xvg` | `plain_md/compute_rdf.sh` | 03 | ✅ |
 | `density/*` | to be fully redone (`density/density_maps.py`, cryomap); old outputs and their generators are ignored for now | 05, 06 | ⏸ deferred |
 
 ## 7. Paper notebooks (run order)
@@ -218,7 +220,7 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 |---|---|---|---|
 | 1 | `01-MetadBiasFit` | metad COLVAR/static.COLVAR/bias_params (di- and triuridine) | `figures/metad_fes`, `bias_barrier`, triuridine variants |
 | 2 | `02-Kinetics` | kinetics COLVARs (0.0–1.2, triuridine), `bias_params.wsv` | kinetics figures |
-| 3 | `04-Replex` | replex `bias.COLVAR`, `cv.COLVAR`, `bias_index.xvg`, `dist_*` | `figures/replex/*` ⚠️ only works for replicate 0 (reads `rep{i:02d}`, `rep00`) |
+| 3 | `04-Replex` | replex `bias.COLVAR`, `cv.COLVAR`, `bias_index.xvg`, `dist_*` | `figures/replex/*_{system}_{ff}_replicate{rep}.pdf` (set `system`, `rep` at the top; run once per system and replicate) |
 | 4 | `04-MotifAnalysis` | motif parquets (replex, plain_md, structures, 9cbu), `bias.COLVAR` | `*_summary*.parquet` (back into the simulation folders), motif table, `figures/motif_analysis` |
 | 5 | `03-IntronBinding` | motif parquets, **summaries from 04-MotifAnalysis**, RDFs, replex/plain trajectories | ion-binding figures, `ion_count_bulk.csv` (cache) ⚠️ numbered 03 but runs after 04-MotifAnalysis |
 | 6 | `05-DensityMaps` | density maps, EM maps, `9CBU_fixed.pdb`, replex trajectory | `best_tempfactors*.csv`, `cross_correlations.csv`, `cc_p_values.csv`, `tempfactor_scan*.parquet`, map figures |
@@ -231,9 +233,9 @@ Not in the chain (keep or retire? ❓): `Figures copy 3`, `IndividualSiteAssessm
 
 ## Open questions
 
-1. Are the `7ez0_nomg` plain MD runs 400 ns rather than 600 ns?
+None at the moment.
 
-Resolved: the unbiased `kinetics/*/0.0` runs are kept as they are, despite their different
+Resolved: the `7ez0_nomg` plain MD runs are 400 ns long (the other plain MD runs are 600 ns); the unbiased `kinetics/*/0.0` runs are kept as they are, despite their different
 restraints; all final plain MD systems used `run_single_light.slurm`; force fields are hand-modified raw inputs; `diuridine.pdb` and `triuridine.gro`
 are raw inputs from another in-group project; the triuridine `bias_params.wsv` is a copy
 of the diuridine fit; the Con2-2.2A half maps come from the DasLab Water-CryoEM-ribozyme
@@ -264,8 +266,7 @@ exist) and reinstalled the package. The remaining commands are `ion_motif_analys
 - **Needed for reproduction, keep:** `classes.MetadSim` (bias fit), `ion_motif_analysis`,
   `tools`, `bias`, `constants`, `parallel`; from `density.align`:
   `reorder_residue_atoms`, `standardize_names`, `check_alignable`.
-- **Make scripts take arguments** instead of hand-edited variables (`system`, `replicate`,
-  `from_rep`, `to_rep`, `forcefields`, `refs`), so one command per step reproduces all systems.
-- **Unify conventions:** `remux` vs `remuxed`; COLVAR suffixes; the `replicate0/` level in `plain_md`.
+- **Hand-edited variables** in prepare scripts are set to the final ranges used, so one call
+  per step reproduces all systems (done for `structures/7ez0*`, `plain_md`, `replex`).
 - **Density:** switch 05/06 to `density/global` (cryomap); then drop `mg_sampling.density.{grid,forward_density,plot,utils}`
   and `density/forward_density_*.py`.
