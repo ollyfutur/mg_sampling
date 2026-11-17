@@ -12,7 +12,9 @@ N_REPLICAS = 8  # replicas per replex replicate
 class System:
     start: float  # ns, end of equilibration
     end: float  # ns, end of the run
-    n_replicates: int  # replex: replicates of N_REPLICAS replicas; plain MD: independent runs
+    n_replicates: (
+        int  # replex: replicates of N_REPLICAS replicas; plain MD: independent runs
+    )
 
 
 SYSTEMS = {
@@ -35,5 +37,8 @@ def replica_dirs(system: str, k: int) -> list[Path]:
     """Folders of the continuous trajectories of replicate k (replex: N_REPLICAS replicas; plain MD: one)."""
     path = PROJECT_DIR / system
     if is_replex(system):
-        return [path / f"replicate{k}" / f"rep{i:02d}" for i in range(N_REPLICAS * k, N_REPLICAS * (k + 1))]
+        return [
+            path / f"replicate{k}" / f"rep{i:02d}"
+            for i in range(N_REPLICAS * k, N_REPLICAS * (k + 1))
+        ]
     return [path / "replicate0" / f"rep{k:02d}"]

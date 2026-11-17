@@ -2,9 +2,8 @@
 
 import warnings
 
-import numpy as np
-
 import MDAnalysis as mda
+import numpy as np
 from MDAnalysis import AtomGroup, Universe
 from MDAnalysis.analysis.distances import distance_array
 from MDAnalysis.lib.distances import minimize_vectors

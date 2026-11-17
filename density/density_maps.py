@@ -17,13 +17,17 @@ import time
 from pathlib import Path
 
 import MDAnalysis as mda
-from MDAnalysis.transformations import fit_rot_trans
-
 from cryomap import ForwardDensity, masks, read_mrc
 from cryomap.transformations import unwrap_consecutive, wrap_around
-from pipeline import PROJECT_DIR
+from MDAnalysis.transformations import fit_rot_trans
+
 from mg_sampling.replex import ParallelReader
-from mg_sampling.structure import check_alignable, reorder_residue_atoms, standardize_names
+from mg_sampling.structure import (
+    check_alignable,
+    reorder_residue_atoms,
+    standardize_names,
+)
+from pipeline import PROJECT_DIR
 from pipeline.systems import SYSTEMS, is_replex, replica_dirs
 
 REF_MAP = PROJECT_DIR / "density" / "emd_42499.mrc"
@@ -33,7 +37,7 @@ REF_ALIGN_SEL = "nucleic and not element H and not (resid 22 and name P OP1 OP2)
 MOB_ALIGN_SEL = "nucleic and not element H"
 OUT_SEL = "all"
 BACKEND = "dask"  # MDAnalysis parallel backend
-DEVICE = "cuda"   # torch device
+DEVICE = "cuda"  # torch device
 CHUNK_SIZE = 4096  # atoms per GPU chunk
 
 # Frame subsampling per system (production window: pipeline.systems.SYSTEMS)
@@ -118,12 +122,22 @@ def compute(system, k, out_dir, args):
     if args.test is not None:
         stop = min(stop, start + args.test * step)
     n_frames = len(range(start, min(stop, len(u.trajectory)), step))
-    print(f"[{name}] {n_frames} frames ({start}:{stop}:{step}), n_workers={args.n_workers}", flush=True)
+    print(
+        f"[{name}] {n_frames} frames ({start}:{stop}:{step}), n_workers={args.n_workers}",
+        flush=True,
+    )
 
     ana = ForwardDensity(
-        mob_out, params, ensemble=True, backend="torch", device=DEVICE, chunk_size=CHUNK_SIZE
+        mob_out,
+        params,
+        ensemble=True,
+        backend="torch",
+        device=DEVICE,
+        chunk_size=CHUNK_SIZE,
     )
-    ana.run(start=start, stop=stop, step=step, backend=BACKEND, n_workers=args.n_workers)
+    ana.run(
+        start=start, stop=stop, step=step, backend=BACKEND, n_workers=args.n_workers
+    )
 
     ensemble = ana.results.ensemble
     if replex:
@@ -144,17 +158,33 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("system", choices=SYSTEMS, metavar="system", help=f"One of: {', '.join(SYSTEMS)}")
-    parser.add_argument("replicate", type=int, help="Replicate number (replex: 0-1, plain MD: 0-7)")
     parser.add_argument(
-        "--n-workers", type=int,
+        "system",
+        choices=SYSTEMS,
+        metavar="system",
+        help=f"One of: {', '.join(SYSTEMS)}",
+    )
+    parser.add_argument(
+        "replicate", type=int, help="Replicate number (replex: 0-1, plain MD: 0-7)"
+    )
+    parser.add_argument(
+        "--n-workers",
+        type=int,
         default=int(os.environ.get("SLURM_CPUS_PER_TASK", 4)),
         help="Number of dask worker processes (default: $SLURM_CPUS_PER_TASK, or 4)",
     )
-    parser.add_argument("--out-dir", type=Path, default=PROJECT_DIR / "density" / "global",
-                        help="Output directory (default: density/global)")
-    parser.add_argument("--overwrite", action="store_true", help="Recompute existing output")
-    parser.add_argument("--test", type=int, metavar="N", help="Only compute the first N frames")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=PROJECT_DIR / "density" / "global",
+        help="Output directory (default: density/global)",
+    )
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Recompute existing output"
+    )
+    parser.add_argument(
+        "--test", type=int, metavar="N", help="Only compute the first N frames"
+    )
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)

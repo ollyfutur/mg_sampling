@@ -1,8 +1,8 @@
 """Histogram helpers and bootstrap error estimates."""
 
+import inspect
 from collections import namedtuple
 from dataclasses import dataclass
-import inspect
 
 import numpy as np
 
@@ -87,7 +87,9 @@ def bayesian_bootstrap(
     weights = rng.dirichlet(weights, n_resamples)
 
     if accepts_weights:
-        res = [statistic(data, weights=weights[i], **kwargs) for i in range(n_resamples)]
+        res = [
+            statistic(data, weights=weights[i], **kwargs) for i in range(n_resamples)
+        ]
     else:
         res = []
         for i in range(n_resamples):
@@ -108,7 +110,9 @@ def bayesian_bootstrap(
     )
 
 
-def bootstrap(data, statistic, weights=None, n_resamples=200, rng=None, confidence_level=0.95):
+def bootstrap(
+    data, statistic, weights=None, n_resamples=200, rng=None, confidence_level=0.95
+):
     """
     Classical bootstrap with weighted samples.
     """
@@ -135,8 +139,18 @@ def bootstrap(data, statistic, weights=None, n_resamples=200, rng=None, confiden
     )
 
 
-def block_bootstrap(data, statistic, *, block_id=None, n_blocks=None, weights=None,
-                    bayesian=False, n_resamples=200, rng=None, confidence_level=0.95):
+def block_bootstrap(
+    data,
+    statistic,
+    *,
+    block_id=None,
+    n_blocks=None,
+    weights=None,
+    bayesian=False,
+    n_resamples=200,
+    rng=None,
+    confidence_level=0.95,
+):
     """
     Bootstrap `statistic` over blocks of rows of `data` (for correlated samples).
 
@@ -170,7 +184,12 @@ def block_bootstrap(data, statistic, *, block_id=None, n_blocks=None, weights=No
             w = rng.dirichlet(np.ones(n_blocks))[row_block]
             res.append(call(data, w if weights is None else w * weights))
         else:
-            inds = np.concatenate([block_inds[i] for i in rng.choice(n_blocks, size=n_blocks, replace=True)])
+            inds = np.concatenate(
+                [
+                    block_inds[i]
+                    for i in rng.choice(n_blocks, size=n_blocks, replace=True)
+                ]
+            )
             res.append(call(data[inds], None if weights is None else weights[inds]))
     res = np.asarray(res)
 

@@ -7,10 +7,10 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from pipeline.bias import ASSOCIATIVE_BOUNDS, ASSOCIATIVE_P_0, PARAMS_NAMES, bias_fn
-from pipeline.constants import RT
 from mg_sampling.io import read_plumed, read_plumed_fes, to_wsv
 from mg_sampling.stats import edges_to_range
+from pipeline.bias import ASSOCIATIVE_BOUNDS, ASSOCIATIVE_P_0, PARAMS_NAMES, bias_fn
+from pipeline.constants import RT
 
 
 class MetadSim:
@@ -37,7 +37,9 @@ def associative_loss_fn(sim: MetadSim, bias_fn, params):
     X_range = edges_to_range(X_edges)
     mask = associative_mask(sim.x, sim.y)
     bias_weights = np.exp(-bias_fn(sim.x, sim.y, *params) / RT) * mask
-    ρX, _ = np.histogram(sim.X, bins=X_edges, density=True, weights=sim.weights * bias_weights)
+    ρX, _ = np.histogram(
+        sim.X, bins=X_edges, density=True, weights=sim.weights * bias_weights
+    )
     FX = -RT * np.log(ρX)
     imid = len(FX) // 2
     i1, i2 = np.argmin(FX[:imid]), np.argmin(FX[imid:]) + imid
@@ -47,8 +49,15 @@ def associative_loss_fn(sim: MetadSim, bias_fn, params):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("path", type=Path, help="Metadynamics folder (with static.COLVAR and fes.dat)")
-    parser.add_argument("-o", "--output", type=Path, help="Output file (default: <path>/bias_params.wsv)")
+    parser.add_argument(
+        "path", type=Path, help="Metadynamics folder (with static.COLVAR and fes.dat)"
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="Output file (default: <path>/bias_params.wsv)",
+    )
     args = parser.parse_args()
 
     output = args.output or args.path / "bias_params.wsv"

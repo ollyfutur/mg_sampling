@@ -9,8 +9,8 @@ from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 
-from pipeline.constants import RT
 from mg_sampling.io import read_plumed
+from pipeline.constants import RT
 
 COEF = 1.039661  # rescales coordination numbers to integer values
 
@@ -51,7 +51,10 @@ def get_w_n(logw_n, u_n, λ, nop_n, α):
 def get_p_acc(w1, w2):
     p_acc = 0.0
     for i in range(len(w1)):
-        p_acc += 2 * np.sum(np.minimum(w1[i] * w2[i + 1:], w1[i + 1:] * w2[i])) + w1[i] * w2[i]
+        p_acc += (
+            2 * np.sum(np.minimum(w1[i] * w2[i + 1 :], w1[i + 1 :] * w2[i]))
+            + w1[i] * w2[i]
+        )
     return p_acc
 
 
@@ -89,11 +92,17 @@ def fit_ladder(logwM_n, uM_n, nopM_n, α, nrep):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", type=Path, help="Kinetics folder (e.g. op_mMg_tip3p)")
-    parser.add_argument("--scalings", type=float, nargs="+", default=[0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2])
+    parser.add_argument(
+        "--scalings", type=float, nargs="+", default=[0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]
+    )
     parser.add_argument("--nrep", type=int, default=12, help="Number of replicas")
-    parser.add_argument("-M", type=int, default=150, help="Number of independent systems for resampling")
+    parser.add_argument(
+        "-M", type=int, default=150, help="Number of independent systems for resampling"
+    )
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("-o", "--output-dir", type=Path, help="Output folder (default: path)")
+    parser.add_argument(
+        "-o", "--output-dir", type=Path, help="Output folder (default: path)"
+    )
     args = parser.parse_args()
 
     output_dir = args.output_dir or args.path
@@ -109,9 +118,13 @@ def main():
 
     α = fit_alpha(logw_n, u_n, nop_n)
     rng = np.random.default_rng(args.seed)
-    logwM_n, uM_n, nopM_n = resample(logw_n, u_n, nop_n, α, np.linspace(0, 1, args.nrep), args.M, rng)
+    logwM_n, uM_n, nopM_n = resample(
+        logw_n, u_n, nop_n, α, np.linspace(0, 1, args.nrep), args.M, rng
+    )
     λ_k = fit_ladder(logwM_n, uM_n, nopM_n, α, args.nrep)
-    print("Acceptances:", np.round(get_acceptances(logwM_n, uM_n, λ_k, nopM_n, α(λ_k)), 3))
+    print(
+        "Acceptances:", np.round(get_acceptances(logwM_n, uM_n, λ_k, nopM_n, α(λ_k)), 3)
+    )
 
     np.savetxt(out_scalings, λ_k, fmt="%.6f")
     np.savetxt(out_alphas, RT * np.abs(α(λ_k)), fmt="%.6f")  # kJ/mol

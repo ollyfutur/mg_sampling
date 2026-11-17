@@ -21,7 +21,7 @@ def read_plumed(path, drop_duplicates=True):
     df = pd.read_csv(path, delimiter=r"\s+", comment="#", header=None)
     df.columns = columns
     if drop_duplicates:
-        df = df.drop_duplicates(subset='time', keep='last')
+        df = df.drop_duplicates(subset="time", keep="last")
     return df
 
 
