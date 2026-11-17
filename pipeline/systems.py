@@ -42,3 +42,16 @@ def replica_dirs(system: str, k: int) -> list[Path]:
             for i in range(N_REPLICAS * k, N_REPLICAS * (k + 1))
         ]
     return [path / "replicate0" / f"rep{k:02d}"]
+
+
+def replicas(system: str):
+    """(replicate, replica index within it, folder) of every continuous trajectory of `system`."""
+    for k in range(SYSTEMS[system].n_replicates):
+        for i, path in enumerate(replica_dirs(system, k)):
+            yield k, i, path
+
+
+def in_window(system: str, time_ns):
+    """Mask of times (ns) within the production window of `system`."""
+    window = SYSTEMS[system]
+    return (time_ns >= window.start) & (time_ns < window.end)

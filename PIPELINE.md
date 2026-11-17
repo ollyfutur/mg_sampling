@@ -99,7 +99,7 @@ For each system, run in its folder:
 | `7ez0/nMg_tip3p` | 00–07 | plain_md (+ `_soft`) | ✅ |
 | `7ez0_noion/mMg_tip3p` | 00–15 | replex (00–15), plain_md (00–07) | ✅ |
 | `7ez0_noion/nMg_tip3p` | 00–07 | plain_md | ✅ |
-| `7ez0_nomg/mMg_tip3p` | 00–07 | plain_md | ⚠️ motif files missing (not read by the paper?) |
+| `7ez0_nomg/mMg_tip3p` | 00–07 | plain_md | ✅ (no Mg²⁺, hence no `MG_motifs.parquet`) |
 | `1naj/mMg_tip3p` | 00–02 | biased_md | ✅ |
 | `diuridine/mMg_tip3p` | single box | metad, kinetics | ✅ own `prepare.sh` (min + equil included, local `min.mdp`/`equil.mdp`) |
 | `triuridine/mMg_tip3p` | single box | metad, kinetics | ✅ same |
@@ -206,10 +206,11 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 |---|---|---|---|
 | `replex/.../repNN/cv.COLVAR.<i>` | `replex/analysis.slurm` (`generate_plumed_analysis.sh` + `plumed driver`) | 04-Replex | ✅ `<i>` = replica index 0–7 within the replicate, as for `bias.COLVAR.<i>` (replicate 1 files renamed from 8–15 on 2026-11-13) |
 | `replex/.../repNN/dist_{MG_O_Phosphate,O_Phosphate_MG}.xvg` | `replex/compute_ion_dist.slurm` | 04-Replex | ✅ |
-| `{replex,plain_md}/.../repNN/{MG,NA}_motifs.parquet` | `replex/ion_motif_analysis.{sh,slurm}`, `plain_md/ion_motif_analysis.sh` (CLI `ion_motif_analysis`) | 03, 06 (via `pipeline.data.load_occupancy`) | 🔁 to be rerun during the analysis refactor; keep one variant (the two replex scripts differ: `--outer_cutoff 5.0 --standardize` vs `--outer_cutoff 0`) |
+| `{replex,plain_md}/.../repNN/{MG,NA}_motifs.parquet` | `replex/ion_motif_analysis.{sh,slurm}`, `plain_md/ion_motif_analysis.sh` (CLI `ion_motif_analysis`) | 03 (`pipeline.data.load_motifs`), 06 (`pipeline.data.load_occupancy`) | 🔁 to be rerun during the analysis refactor; keep one variant (the two replex scripts differ: `--outer_cutoff 5.0 --standardize` vs `--outer_cutoff 0`) |
 | `replex/7ez0/mMg_tip3p/replicate0/remuxed/0_trajout.xtc` | `replex/remux.sh` (`trjcat -demux`), run in `replicate0/` | — | ✅ |
 | `.../remuxed/0_{MG,NA,CL}_RNA_rdf.xvg` | `replex/compute_rdf.sh`, run in `remuxed/` | 03 | ✅ |
 | `plain_md/7ez0/nMg_tip3p/replicate0/rep00/{MG,NA,CL}_RNA_rdf.xvg` | `plain_md/compute_rdf.sh` | 03 | ✅ |
+| `{replex,plain_md}/.../repNN/ion_counts.parquet` (total and bulk water/ion counts, every 1 ns, all λ) | `analysis/submit_ion_counts.sh` → `ion_counts.slurm <system>` (array index = replicate) → `ion_counts.py <system> <k>` | 03 (`pipeline.data.load_ion_counts`) | ⏸ to be run (≈ 15 min per plain MD replica, ≈ 1 h per replex replicate) |
 | `density/global/<sys>_<ff>_<k>` (one cryomap `GridEnsemble` per replicate) | `density/submit_density.sh` → `density_maps.slurm <system>` (array index = replicate) → `density_maps.py <system> <k>` | 05, 06 | ⏸ to be run on the cluster |
 
 ## 7. Paper notebooks (run order)
@@ -219,7 +220,7 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 | 1 | `01-MetadBiasFit` | metad COLVAR/static.COLVAR/bias_params (di- and triuridine) | `figures/metad_fes`, `bias_barrier`, triuridine variants |
 | 2 | `02-Kinetics` | kinetics COLVARs (0.0–1.2, triuridine), `bias_params.wsv` | kinetics figures |
 | 3 | `04-Replex` | replex `bias.COLVAR`, `cv.COLVAR`, `bias_index.xvg`, `dist_*` | `figures/replex/*_{system}_{ff}_replicate{rep}.pdf` (all systems and replicates in one run) |
-| 4 | `03-IntronBinding` | motif parquets (summarized on the fly with `motifs.summarize_motifs`), RDFs, replex/plain trajectories | ion-binding figures, `ion_count_bulk.csv` (cache) ⚠️ still reads the old `*_summary*.parquet` until revised |
+| 4 | `03-IntronBinding` | `{MG,NA}_motifs.parquet`, `bias.COLVAR.<i>`, `ion_counts.parquet`, structure motif files (7ez0, 9cbu), RDFs | ion-binding figures (time series, site types, bound/outer/bulk, denticity, bulk concentration, ion excess, per-residue occupancy, RDFs) |
 | 5 | `05-DensityMaps` | density maps, EM maps, `9CBU_fixed.pdb`, replex trajectory | `best_tempfactors*.csv`, `cross_correlations.csv`, `cc_p_values.csv`, `tempfactor_scan*.parquet`, map figures |
 | 6 | `06-IndividualMotifAssessment` | `best_tempfactors.csv` (from 05), motif parquets (summarized on the fly), individual maps | `motif_{table,count,recovery}.tex`, `motif_highlight/*`, figures ⚠️ still reads the old `*_summary*.parquet` until revised |
 | — | `07-CASP17` | casp17 trajectories | out of scope for now |
@@ -283,6 +284,17 @@ density maps; plain MD from 150 ns, `7ez0_nomg` from 100 ns). The new bootstrap 
 replica block by Dirichlet(1) × its frame count, i.e. it resamples whole blocks; the old one
 used concentrations ∝ frame count, which narrowed the replex intervals (median width at λ0:
 0.21 now vs 0.16 before; point estimates identical).
+`03-IntronBinding` revised (2026-11-17):
+- loads the motif tables once, with `pipeline.data.load_motifs`, for all systems of `SYSTEMS`;
+- every average uses the production window and λ0;
+- every interval is a bayesian block bootstrap over continuous trajectories (`block_bootstrap`);
+- the ion counting moved to `analysis/ion_counts.py`, whose counts are identical to the old CSV cache.
+
+Fixed on the way:
+- unbound/outer/inner means skipped frames with no ion of a given type (NaN instead of 0);
+- site-type fractions weighted blocks by frame count twice;
+- the per-residue figure failed for `7ez0_nomg` (no Mg²⁺);
+- display-only cells were dropped, `tight_layout` calls removed (constrained layout as elsewhere).
 
 ## Python packages (reorganized 2026-11-16/17)
 
@@ -296,8 +308,8 @@ data layout.
 | `__init__` | `PROJECT_DIR` (repository root) | scripts, notebooks |
 | `constants` | `RT` at 300 K, `π`, `SWITCH_COEFF` | fit scripts, 01, 02, 04-Replex |
 | `bias` | `bias_fn` (barrier-flattening bias) and its fit constants | `metad/fit_bias.py`, 01 |
-| `systems` | `SYSTEMS`: production window (start, end in ns) and replicates of each simulated system; `replica_dirs`, `is_replex` | `density_maps.py`, `pipeline.data`, `paper/labels.py` (`simstart`) |
-| `data` | `load_occupancy(system, k, ion, lambda_index)`: `compress_motifs` of each replica of a replicate, in the production window (and at λ for replex) | 03, 06 |
+| `systems` | `SYSTEMS`: production window (start, end in ns) and replicates of each simulated system; `replica_dirs`, `replicas`, `in_window`, `is_replex` | `density_maps.py`, `ion_counts.py`, `pipeline.data`, `paper/labels.py` (`simstart`) |
+| `data` | `load_motifs(system, ion, columns)`, `load_ion_counts(system)`: per-replica tables of all replicas with `replicate`, `replica`, `state` (λ index); `load_occupancy(system, k, ion, lambda_index)`: `compress_motifs` of each replica in the production window (and at λ); `bias_state` | 03, 06 |
 
 | `mg_sampling` module | Content | Used by |
 |---|---|---|
