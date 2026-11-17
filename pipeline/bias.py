@@ -1,6 +1,8 @@
+"""Barrier-flattening bias on the (n_OP, n_OW) coordination plane, and its fit settings."""
+
 import numpy as np
 
-from mg_sampling.constants import π
+from pipeline.constants import π
 
 PARAMS_NAMES = ('E', 'sX', 'sY')
 ASSOCIATIVE_P_0 = (1, 0.1, 0.2)

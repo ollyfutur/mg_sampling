@@ -33,7 +33,11 @@ maintainers = [
 ]
 description = "Python code for enhanced Mg-RNA dynamics project"
 
+[tool.setuptools.packages.find]
+where = ["src", "."]
+include = ["mg_sampling*", "pipeline*"]
+
 [project.scripts]
-ion_motif_analysis = "mg_sampling.ion_motif_analysis:main"
+ion_motif_analysis = "mg_sampling.motifs:main"
 forward_density = "mg_sampling.density.forward_density:main"
 align = "mg_sampling.density.align:main"

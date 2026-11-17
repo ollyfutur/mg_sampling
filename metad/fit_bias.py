@@ -7,10 +7,22 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from mg_sampling.bias import ASSOCIATIVE_BOUNDS, ASSOCIATIVE_P_0, PARAMS_NAMES, bias_fn
-from mg_sampling.classes import MetadSim
-from mg_sampling.constants import RT
-from mg_sampling.tools import edges_to_range, to_wsv
+from pipeline.bias import ASSOCIATIVE_BOUNDS, ASSOCIATIVE_P_0, PARAMS_NAMES, bias_fn
+from pipeline.constants import RT
+from mg_sampling.io import read_plumed, read_plumed_fes, to_wsv
+from mg_sampling.stats import edges_to_range
+
+
+class MetadSim:
+    """CVs and metadynamics weights from `static.COLVAR` (CV names from `fes.dat`)."""
+
+    def __init__(self, path):
+        colvar = read_plumed(path / "static.COLVAR")
+        (x_name, y_name), _, _ = read_plumed_fes(path / "fes.dat")
+        self.x = colvar[x_name].to_numpy()
+        self.y = colvar[y_name].to_numpy()
+        self.X = self.x - self.y + 6
+        self.weights = np.exp(colvar["metad.bias"].to_numpy() / RT)
 
 
 def associative_mask(x, y):

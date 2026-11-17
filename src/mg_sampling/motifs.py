@@ -1,10 +1,21 @@
+"""Ion binding motifs (MgRNA nomenclature) and the `ion_motif_analysis` command."""
+
+import argparse
 from collections import defaultdict, Counter
 
+import MDAnalysis as mda
+import numpy as np
+import pandas as pd
 from MDAnalysis import Universe
 from MDAnalysis.core.groups import Atom, AtomGroup
 from MDAnalysis.lib.distances import calc_angles, distance_array
 from MDAnalysis.analysis.base import AnalysisBase
 from MDAnalysis.analysis.results import ResultsGroup
+
+from mg_sampling.stats import block_bootstrap
+from mg_sampling.structure import standardize_names
+
+MOTIF_INFO = ['n_inner', 'inner_indices', 'inner_names', 'inner_resids', 'inner_resnames', 'stereo', 'mgrna']
 
 MGRNA_LIGTYPES = ['Oph', 'Ob', 'Or', 'Nb', 'X', 'Ow']
 MGRNA_LIGTYPES_DICT = defaultdict(
@@ -204,7 +215,126 @@ class IonNucleicAnalysis(AnalysisBase):
         self.results.timeseries.append(frame)
 
     def to_pandas(self):
-        import pandas as pd
         df = pd.DataFrame([data for frame in self.results.timeseries for data in frame])
         return df
 
+
+def motif_names(df):
+    """Motif of each row of an `IonNucleicAnalysis` table: "{resname}{resid}{name},…-{mgrna}"."""
+    keys = pd.Series(list(zip(
+        df['inner_resnames'].map(tuple), df['inner_resids'].map(tuple), df['inner_names'].map(tuple), df['mgrna'],
+    )))
+    codes, uniques = pd.factorize(keys)
+    names = []
+    for resnames, resids, atoms, mgrna in uniques:
+        name = ",".join(f"{resname}{resid}{atom}" for resname, resid, atom in zip(resnames, resids, atoms))
+        names.append(f"{name}-{mgrna}" if mgrna else name)
+    return pd.Series(np.asarray(names, dtype=object)[codes], index=df.index)
+
+
+def compress_motifs(df):
+    """
+    Motif occupancy along one trajectory and the table of motifs, from an `IonNucleicAnalysis` table.
+
+    occupancy: frames (index `time`) x motifs, number of ions in each motif (inner sphere).
+    info: one row per motif with its inner ligands, stereochemistry, MgRNA class and the ions seen in it.
+    """
+    bound = df[df['n_inner'] > 0].assign(motif=lambda x: motif_names(x))
+    occupancy = (
+        bound.groupby(['time', 'motif']).size()
+        .unstack('motif', fill_value=0)
+        .reindex(np.unique(df['time']), fill_value=0)
+        .rename_axis('time')
+        .astype(np.uint16)
+    )
+    info = bound.drop_duplicates('motif').set_index('motif')[MOTIF_INFO]
+    info['mg_indices'] = bound.groupby('motif')['index'].agg(lambda x: sorted(set(x)))
+    return occupancy, info
+
+
+def summarize_motifs(blocks, weights=None, rng=0, **bootstrap_kwargs):
+    """
+    Mean occupancy `p` of each motif over `blocks` [(occupancy, info), …] with a bayesian block
+    bootstrap interval (`p_low`, `p_high`), joined with the motif table. `weights`: optional
+    frame weights for each block (biased runs). Blocks without frames are ignored.
+    """
+    occupancies, infos = zip(*blocks)
+    if weights is None:
+        weights = [np.ones(len(occupancy)) for occupancy in occupancies]
+    motifs = sorted(set().union(*(occupancy.columns for occupancy in occupancies)))
+    block_means, block_weights = [], []
+    for occupancy, w in zip(occupancies, weights):
+        if np.sum(w) > 0:
+            block_means.append(np.average(occupancy.reindex(columns=motifs, fill_value=0), axis=0, weights=w))
+            block_weights.append(np.sum(w))
+    res = block_bootstrap(
+        np.array(block_means), lambda x, weights: np.average(x, axis=0, weights=weights),
+        weights=block_weights, bayesian=True, rng=rng, **bootstrap_kwargs,
+    )
+    summary = pd.DataFrame(
+        {'p': res.estimate, 'p_low': res.confidence_interval.low, 'p_high': res.confidence_interval.high},
+        index=pd.Index(motifs, name='motif'),
+    )
+    info = pd.concat(infos)
+    mg_indices = info.groupby(level='motif')['mg_indices'].agg(lambda x: sorted(set().union(*x)))
+    info = info[~info.index.duplicated()].drop(columns='mg_indices').join(mg_indices)
+    return summary.join(info)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="ion_motif_analysis",
+        description="Anaylize ion-RNA contacts and classify them according to MgRNA nomenclature",
+    )
+    parser.add_argument('topfile', type=str, help="MDAnalysis-readable file for topology")
+    parser.add_argument('trajfiles', nargs='*', type=str, help="MDAnalysis-readable file(s) for trajectory")
+    parser.add_argument('--sel', type=str, default='name MG',
+        help="('name MG') MDAnalysis selection string for ions")
+    parser.add_argument('--ligsel', type=str, default='(nucleic and not type H) or name MG',
+        help="('(nucleic and not type H) or name MG') MDAnalysis selection string for binding sites")
+    parser.add_argument('--inner_cutoff', type=float, default=2.5, help="(2.5) Inner-sphere cutoff radius in Å")
+    parser.add_argument('--outer_cutoff', type=float, default=4.8, help="(4.8) Outer-sphere cutoff radius in Å; set to zero or negative to skip outer-sphere analysis")
+    parser.add_argument('--output-distances', action='store_true', help="Store distances to inner (and outer) ligand atoms")
+    parser.add_argument('--drop-empty', action='store_true', help="Discard frame for ion with no ligand")
+    parser.add_argument('--standardize', action='store_true', help="Standardize some atom names (O1P->OP1…)")
+    parser.add_argument('-o', '--outfile', type=str, default='ion_analysis.csv', help="(ion_analysis.csv) Output file (.csv or .parquet)")
+    parser.add_argument('--start', type=int, default=0, help="(0) Starting frame")
+    parser.add_argument('--stop', type=int, default=None, help="(None) Ending frame")
+    parser.add_argument('--step', type=int, default=1, help="(1) Subsample every N frame")
+    parser.add_argument('-n', '--n_workers', type=int, default=None, help="(None) Number of parallel processes")
+
+    args = parser.parse_args()
+    if args.outer_cutoff <= 0:
+        args.outer_cutoff = None
+
+    u = mda.Universe(args.topfile, args.trajfiles) if args.trajfiles else mda.Universe(args.topfile)
+    if args.standardize:
+        standardize_names(u)
+    anal = IonNucleicAnalysis(
+        u,
+        ionsel=args.sel,
+        inner_cutoff=args.inner_cutoff,
+        ligsel=args.ligsel,
+        outer_cutoff=args.outer_cutoff,
+        output_distances=args.output_distances,
+        keep_empty=(not args.drop_empty),
+    )
+    print(f"Running analysis with {args.n_workers} processes...")
+    if args.n_workers is not None:
+        anal.run(start=args.start, stop=args.stop, step=args.step, backend='dask', n_workers=args.n_workers)
+    else:
+        anal.run(start=args.start, stop=args.stop, step=args.step, backend='serial')
+    df = anal.to_pandas()
+
+    if args.outfile.endswith(".parquet"):
+        try:
+            df.to_parquet(args.outfile)
+        except Exception as e:
+            print("Could not save parquet format:", e)
+            print("Output as CSV instead:", args.outfile)
+            df.to_csv(args.outfile)
+    else:
+        df.to_csv(args.outfile)
+
+if __name__ == "__main__":
+    main()

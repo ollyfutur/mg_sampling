@@ -21,13 +21,10 @@ from MDAnalysis.transformations import fit_rot_trans
 
 from cryomap import ForwardDensity, masks, read_mrc
 from cryomap.transformations import unwrap_consecutive, wrap_around
-from mg_sampling import PROJECT_DIR
-from mg_sampling.density.align import (
-    check_alignable,
-    reorder_residue_atoms,
-    standardize_names,
-)
-from mg_sampling.parallel import ParallelReader
+from pipeline import PROJECT_DIR
+from mg_sampling.replex import ParallelReader
+from mg_sampling.structure import check_alignable, reorder_residue_atoms, standardize_names
+from pipeline.systems import SYSTEMS, is_replex, replica_dirs
 
 REF_MAP = PROJECT_DIR / "density" / "emd_42499.mrc"
 REF_PDB = PROJECT_DIR / "structures" / "9CBU_fixed.pdb"
@@ -39,28 +36,30 @@ BACKEND = "dask"  # MDAnalysis parallel backend
 DEVICE = "cuda"   # torch device
 CHUNK_SIZE = 4096  # atoms per GPU chunk
 
-# Frames (start, stop, step) per system, after discarding equilibration
-FRAMES = {
-    "replex/7ez0/mMg_tip3p": (750, 3000, 1),  # 75-300 ns
-    "replex/7ez0_noion/mMg_tip3p": (750, 3000, 1),
-    "plain_md/7ez0/mMg_tip3p": (1500, 6000, 8),  # 150-600 ns
-    "plain_md/7ez0/nMg_tip3p": (1500, 6000, 8),
-    "plain_md/7ez0/nMg_tip3p_soft": (1500, 6000, 8),
-    "plain_md/7ez0_noion/mMg_tip3p": (1500, 6000, 8),
-    "plain_md/7ez0_noion/nMg_tip3p": (1500, 6000, 8),
-    "plain_md/7ez0_nomg/mMg_tip3p": (1000, 4000, 5),  # 100-400 ns
+# Frame subsampling per system (production window: pipeline.systems.SYSTEMS)
+STEP = {
+    "replex/7ez0/mMg_tip3p": 1,
+    "replex/7ez0_noion/mMg_tip3p": 1,
+    "plain_md/7ez0/mMg_tip3p": 8,
+    "plain_md/7ez0/nMg_tip3p": 8,
+    "plain_md/7ez0/nMg_tip3p_soft": 8,
+    "plain_md/7ez0_noion/mMg_tip3p": 8,
+    "plain_md/7ez0_noion/nMg_tip3p": 8,
+    "plain_md/7ez0_nomg/mMg_tip3p": 5,
 }
-N_REPLICAS = 8  # replicas per replex replicate
 
 
 def inputs(system, k):
     """Topology, trajectories and bias index file (replex only) of replicate k."""
-    path = PROJECT_DIR / system
-    if system.startswith("replex"):
-        reps = [path / f"replicate{k}" / f"rep{i:02d}" for i in range(N_REPLICAS * k, N_REPLICAS * (k + 1))]
-        return reps[0] / "run.tpr", [rep / "run.xtc" for rep in reps], reps[0] / "bias_index.xvg"
-    rep = path / "replicate0" / f"rep{k:02d}"
-    return rep / "run.tpr", [rep / "run.xtc"], None
+    reps = replica_dirs(system, k)
+    bias_index = reps[0] / "bias_index.xvg" if is_replex(system) else None
+    return reps[0] / "run.tpr", [rep / "run.xtc" for rep in reps], bias_index
+
+
+def frames(system, dt):
+    """Frame range (start, stop, step) of the production window, for a trajectory saved every `dt` ps."""
+    window = SYSTEMS[system]
+    return round(window.start * 1000 / dt), round(window.end * 1000 / dt), STEP[system]
 
 
 def output_name(system, k):
@@ -93,14 +92,14 @@ def compute(system, k, out_dir, args):
 
     t0 = time.time()
     ref_align, params = reference()
-    is_replex = bias_index is not None
+    replex = is_replex(system)
     u = mda.Universe(
         topfile,
         trajfiles,
-        format=ParallelReader if is_replex else None,
+        format=ParallelReader if replex else None,
         to_guess=("elements",),
     )
-    if is_replex:
+    if replex:
         # This is in fact "re-multiplexing" continuous trajs to discontinuous, but constant bias trajs
         u.trajectory.demux(bias_index)
     standardize_names(u)
@@ -115,7 +114,7 @@ def compute(system, k, out_dir, args):
         fit_rot_trans(mob_align, ref_align),
     )
 
-    start, stop, step = FRAMES[system]
+    start, stop, step = frames(system, u.trajectory.dt)
     if args.test is not None:
         stop = min(stop, start + args.test * step)
     n_frames = len(range(start, min(stop, len(u.trajectory)), step))
@@ -127,7 +126,7 @@ def compute(system, k, out_dir, args):
     ana.run(start=start, stop=stop, step=step, backend=BACKEND, n_workers=args.n_workers)
 
     ensemble = ana.results.ensemble
-    if is_replex:
+    if replex:
         replica_index = u.trajectory.replica_temp[ana.frames, 0]
         ensemble = ensemble.with_frame_info(replica_index=replica_index)
 
@@ -145,7 +144,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("system", choices=FRAMES, metavar="system", help=f"One of: {', '.join(FRAMES)}")
+    parser.add_argument("system", choices=SYSTEMS, metavar="system", help=f"One of: {', '.join(SYSTEMS)}")
     parser.add_argument("replicate", type=int, help="Replicate number (replex: 0-1, plain MD: 0-7)")
     parser.add_argument(
         "--n-workers", type=int,

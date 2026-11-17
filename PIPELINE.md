@@ -44,12 +44,10 @@ flowchart TD
   METAD3 --> NB01
   KIN --> NB02[02-Kinetics]
   ANA --> NB04R[04-Replex]
-  ANA --> NB04M[04-MotifAnalysis]
-  NB04M --> NB03[03-IntronBinding]
-  ANA --> NB03
+  ANA --> NB03[03-IntronBinding]
   DENS --> NB05[05-DensityMaps]
   NB05 --> NB06[06-IndividualMotifAssessment]
-  NB04M --> NB06
+  ANA --> NB06
   BMD --> NB0X[0X-DNABiasedMD]
 ```
 
@@ -208,7 +206,7 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 |---|---|---|---|
 | `replex/.../repNN/cv.COLVAR.<i>` | `replex/analysis.slurm` (`generate_plumed_analysis.sh` + `plumed driver`) | 04-Replex | ✅ `<i>` = replica index 0–7 within the replicate, as for `bias.COLVAR.<i>` (replicate 1 files renamed from 8–15 on 2026-11-13) |
 | `replex/.../repNN/dist_{MG_O_Phosphate,O_Phosphate_MG}.xvg` | `replex/compute_ion_dist.slurm` | 04-Replex | ✅ |
-| `{replex,plain_md}/.../repNN/{MG,NA}_motifs.parquet` | `replex/ion_motif_analysis.{sh,slurm}`, `plain_md/ion_motif_analysis.sh` (CLI `ion_motif_analysis`) | 03, 04-MotifAnalysis, 06 | 🔁 to be rerun during the analysis refactor; keep one variant (the two replex scripts differ: `--outer_cutoff 5.0 --standardize` vs `--outer_cutoff 0`) |
+| `{replex,plain_md}/.../repNN/{MG,NA}_motifs.parquet` | `replex/ion_motif_analysis.{sh,slurm}`, `plain_md/ion_motif_analysis.sh` (CLI `ion_motif_analysis`) | 03, 06 (via `pipeline.data.load_occupancy`) | 🔁 to be rerun during the analysis refactor; keep one variant (the two replex scripts differ: `--outer_cutoff 5.0 --standardize` vs `--outer_cutoff 0`) |
 | `replex/7ez0/mMg_tip3p/replicate0/remuxed/0_trajout.xtc` | `replex/remux.sh` (`trjcat -demux`), run in `replicate0/` | — | ✅ |
 | `.../remuxed/0_{MG,NA,CL}_RNA_rdf.xvg` | `replex/compute_rdf.sh`, run in `remuxed/` | 03 | ✅ |
 | `plain_md/7ez0/nMg_tip3p/replicate0/rep00/{MG,NA,CL}_RNA_rdf.xvg` | `plain_md/compute_rdf.sh` | 03 | ✅ |
@@ -220,15 +218,16 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 |---|---|---|---|
 | 1 | `01-MetadBiasFit` | metad COLVAR/static.COLVAR/bias_params (di- and triuridine) | `figures/metad_fes`, `bias_barrier`, triuridine variants |
 | 2 | `02-Kinetics` | kinetics COLVARs (0.0–1.2, triuridine), `bias_params.wsv` | kinetics figures |
-| 3 | `04-Replex` | replex `bias.COLVAR`, `cv.COLVAR`, `bias_index.xvg`, `dist_*` | `figures/replex/*_{system}_{ff}_replicate{rep}.pdf` (set `system`, `rep` at the top; run once per system and replicate) |
-| 4 | `04-MotifAnalysis` | motif parquets (replex, plain_md, structures, 9cbu), `bias.COLVAR` | `*_summary*.parquet` (back into the simulation folders), motif table, `figures/motif_analysis` |
-| 5 | `03-IntronBinding` | motif parquets, **summaries from 04-MotifAnalysis**, RDFs, replex/plain trajectories | ion-binding figures, `ion_count_bulk.csv` (cache) ⚠️ numbered 03 but runs after 04-MotifAnalysis |
-| 6 | `05-DensityMaps` | density maps, EM maps, `9CBU_fixed.pdb`, replex trajectory | `best_tempfactors*.csv`, `cross_correlations.csv`, `cc_p_values.csv`, `tempfactor_scan*.parquet`, map figures |
-| 7 | `06-IndividualMotifAssessment` | `best_tempfactors.csv` (from 05), summaries (from 04-MotifAnalysis), individual maps | `motif_{table,count,recovery}.tex`, `motif_highlight/*`, figures |
+| 3 | `04-Replex` | replex `bias.COLVAR`, `cv.COLVAR`, `bias_index.xvg`, `dist_*` | `figures/replex/*_{system}_{ff}_replicate{rep}.pdf` (all systems and replicates in one run) |
+| 4 | `03-IntronBinding` | motif parquets (summarized on the fly with `motifs.summarize_motifs`), RDFs, replex/plain trajectories | ion-binding figures, `ion_count_bulk.csv` (cache) ⚠️ still reads the old `*_summary*.parquet` until revised |
+| 5 | `05-DensityMaps` | density maps, EM maps, `9CBU_fixed.pdb`, replex trajectory | `best_tempfactors*.csv`, `cross_correlations.csv`, `cc_p_values.csv`, `tempfactor_scan*.parquet`, map figures |
+| 6 | `06-IndividualMotifAssessment` | `best_tempfactors.csv` (from 05), motif parquets (summarized on the fly), individual maps | `motif_{table,count,recovery}.tex`, `motif_highlight/*`, figures ⚠️ still reads the old `*_summary*.parquet` until revised |
 | — | `07-CASP17` | casp17 trajectories | out of scope for now |
 | — | `0X-DNABiasedMD` | biased_md trajectories | per-rep parquet cache |
 
-Not in the chain (keep or retire? ❓): `Figures copy 3`, `IndividualSiteAssessment`,
+`0X-DNABiasedMD` imports `summarize_motifs` and `compress_motifs` from `mg_sampling.motifs`,
+which were never committed: it fails at that cell. ❓
+Retired on 2026-11-16 (in git history): `Figures copy 3`, `IndividualSiteAssessment`,
 `IonCompetitionModel`, `RNADynamics`.
 
 ## Open questions
@@ -273,14 +272,53 @@ One notebook at a time, in the order of section 7. Conventions:
   what it uses, and writes figures to `paper/figures/`.
 
 Status: `01-MetadBiasFit` revised; `02-Kinetics` revised (figures and printed rates identical
-to the previous version).
+to the previous version); `04-Replex` revised (loops over the 4 system/replicate pairs; fixed:
+`n_{inner,outer,tot}_dist` counted the replica-index column of the distance arrays as a
+distance, adding one bound Mg²⁺ whenever replica 0 occupied the state). `04-MotifAnalysis`
+removed (2026-11-17): its summaries are computed on the fly by 03 and 06 with
+`pipeline.data.load_occupancy` + `motifs.summarize_motifs`; its figure duplicated 06. Fixed on the way: it
+compared `time` in ps with `simstart` in ns, so equilibration was not discarded. The
+production windows now live in `pipeline.systems` only (replex from 75 ns, as for the
+density maps; plain MD from 150 ns, `7ez0_nomg` from 100 ns). The new bootstrap weights each
+replica block by Dirichlet(1) × its frame count, i.e. it resamples whole blocks; the old one
+used concentrations ∝ frame count, which narrowed the replex intervals (median width at λ0:
+0.21 now vs 0.16 before; point estimates identical).
+
+## Python packages (reorganized 2026-11-16/17)
+
+Both are installed by `pyproject.toml` (`uv pip install -e .`): `src/mg_sampling` is the
+reusable library (nothing specific to these simulations); `pipeline/` holds what is specific
+to this project: repository path, simulation temperature, the bias functional form and the
+data layout.
+
+| `pipeline` module | Content | Used by |
+|---|---|---|
+| `__init__` | `PROJECT_DIR` (repository root) | scripts, notebooks |
+| `constants` | `RT` at 300 K, `π`, `SWITCH_COEFF` | fit scripts, 01, 02, 04-Replex |
+| `bias` | `bias_fn` (barrier-flattening bias) and its fit constants | `metad/fit_bias.py`, 01 |
+| `systems` | `SYSTEMS`: production window (start, end in ns) and replicates of each simulated system; `replica_dirs`, `is_replex` | `density_maps.py`, `pipeline.data`, `paper/labels.py` (`simstart`) |
+| `data` | `load_occupancy(system, k, ion, lambda_index)`: `compress_motifs` of each replica of a replicate, in the production window (and at λ for replex) | 03, 06 |
+
+| `mg_sampling` module | Content | Used by |
+|---|---|---|
+| `io` | `read_plumed`, `read_plumed_fes`, `read_wsv`, `to_wsv` | everything |
+| `stats` | `edges_to_range`, `finitemin/max`; `block_bootstrap` (classical or bayesian, blocks from `block_id` or `n_blocks`); `bootstrap`, `bayesian_bootstrap` (until 03/05/06/0X are revised) | notebooks, `motifs` |
+| `replex` | `ParallelReader` (multi-replica trajectories), `ParallelAnalysis`, `demux` | `density_maps.py`, 04-Replex, 05, 07 |
+| `structure` | `standardize_names`, `reorder_residue_atoms`, `check_alignable`, `wrap_around(_atomgroup)`, `unwrap_sequential` | `density_maps.py`, `motifs`, 05, 06 |
+| `motifs` | `IonNucleicAnalysis` and the `ion_motif_analysis` command; `compress_motifs` (per-motif occupancy along a trajectory + motif table), `summarize_motifs` (mean occupancy, bayesian block bootstrap over replicas) | motif files, 03, 06, 07, 0X |
+| `tools` | `asunique`, `batched`, `vectorize_dict_lookup` | 06, 07, `density.forward_density` |
+| `density/` | old density pipeline (`grid`, `forward_density`, `utils`, `plot`, `align`; commands `forward_density`, `align`) | current 05, 06 only; remove when they are rewritten on cryomap |
+
+Removed: `classes` (`MetadSim` moved into `metad/fit_bias.py`), `ermsd`, `ion_motif_analysis`
+(merged into `motifs`), unused helpers (`read_xvg`, round-trip counters, Kish ratio,
+`read_performance`, `range_to_edges`, `TransformationFromFunction`, `FORCEFIELDS`).
 
 ## Refactoring implications (preliminary)
 
-- **Needed for reproduction, keep:** `classes.MetadSim` (bias fit), `ion_motif_analysis`,
-  `tools`, `bias`, `constants`, `parallel`; from `density.align`:
-  `reorder_residue_atoms`, `standardize_names`, `check_alignable`.
 - **Hand-edited variables** in prepare scripts are set to the final ranges used, so one call
   per step reproduces all systems (done for `structures/7ez0*`, `plain_md`, `replex`).
-- **Density:** switch 05/06 to `density/global` (cryomap); then drop `mg_sampling.density.{grid,forward_density,plot,utils}`
-  and `density/forward_density_*.py`.
+- **Density:** switch 05/06 to `density/global` (cryomap); then drop `mg_sampling/density/`
+  and its two commands.
+- **`replex.demux`:** `np.argmin(repindex_times - time)` is always 0, so the "matching time"
+  branch only runs at t = 0; the other branch (last time strictly before) gives the intended
+  result. Simplify (and vectorize with `np.searchsorted`) when touching it.

@@ -1,5 +1,7 @@
 """Labels, colors and settings shared by the paper notebooks."""
 
+from pipeline.systems import SYSTEMS
+
 cm = 1 / 2.54  # inches
 
 simlabels = {
@@ -54,16 +56,7 @@ ionlabels = {
 }
 
 # Equilibration discarded at the start of each simulation [ns]
-simstart = {
-    'plain_md_7ez0_mMg_tip3p': 150,
-    'plain_md_7ez0_nMg_tip3p': 150,
-    'plain_md_7ez0_nMg_tip3p_soft': 150,
-    'plain_md_7ez0_noion_mMg_tip3p': 150,
-    'plain_md_7ez0_noion_nMg_tip3p': 150,
-    'plain_md_7ez0_nomg_mMg_tip3p': 100,
-    'replex_7ez0_mMg_tip3p': 50,
-    'replex_7ez0_noion_mMg_tip3p': 50,
-}
+simstart = {system.replace('/', '_'): window.start for system, window in SYSTEMS.items()}
 
 simselection = [
     'plain_md_7ez0_mMg_tip3p',

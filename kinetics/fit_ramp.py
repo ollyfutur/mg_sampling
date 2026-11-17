@@ -9,8 +9,8 @@ from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 
-from mg_sampling.constants import RT
-from mg_sampling.tools import read_plumed
+from pipeline.constants import RT
+from mg_sampling.io import read_plumed
 
 COEF = 1.039661  # rescales coordination numbers to integer values
 
