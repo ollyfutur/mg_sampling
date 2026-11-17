@@ -210,7 +210,7 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 | `replex/7ez0/mMg_tip3p/replicate0/remuxed/0_trajout.xtc` | `replex/remux.sh` (`trjcat -demux`), run in `replicate0/` | — | ✅ |
 | `.../remuxed/0_{MG,NA,CL}_RNA_rdf.xvg` | `replex/compute_rdf.sh`, run in `remuxed/` | 03 | ✅ |
 | `plain_md/7ez0/nMg_tip3p/replicate0/rep00/{MG,NA,CL}_RNA_rdf.xvg` | `plain_md/compute_rdf.sh` | 03 | ✅ |
-| `{replex,plain_md}/.../repNN/ion_counts.parquet` (total and bulk water/ion counts, every 1 ns, all λ) | `analysis/submit_ion_counts.sh` → `ion_counts.slurm <system>` (array index = replicate) → `ion_counts.py <system> <k>` | 03 (`pipeline.data.load_ion_counts`) | ⏸ to be run (≈ 15 min per plain MD replica, ≈ 1 h per replex replicate) |
+| `{replex,plain_md}/.../repNN/ion_counts.parquet` (total and bulk water/ion counts for bulk cutoffs 30–50 Å, every 1 ns, all λ) | `analysis/submit_ion_counts.sh` → `ion_counts.slurm <system>` (array index = replicate) → `ion_counts.py <system> <k> [--radii …]` | 03 (`pipeline.data.load_ion_counts`; cutoff `BULK_RADIUS` = 40 Å, convergence figure) | ⏸ to be run (≈ 15 min per plain MD replica, ≈ 1 h per replex replicate) |
 | `density/global/<sys>_<ff>_<k>` (one cryomap `GridEnsemble` per replicate) | `density/submit_density.sh` → `density_maps.slurm <system>` (array index = replicate) → `density_maps.py <system> <k>` | 05, 06 | ⏸ to be run on the cluster |
 
 ## 7. Paper notebooks (run order)
