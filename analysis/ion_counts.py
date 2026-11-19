@@ -21,7 +21,7 @@ from MDAnalysis.lib.distances import capped_distance
 
 from pipeline.systems import SYSTEMS, replica_dirs
 
-RADII = [30, 35, 40, 45, 50]  # Å
+RADII = [30, 40, 50, 60, 70]  # Å
 NAMES = ["OW", "MG", "NA", "CL"]
 OUTPUT = "ion_counts.parquet"
 
