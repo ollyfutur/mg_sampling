@@ -1,6 +1,6 @@
 #!/bin/bash
 # One replicate of a system per array task, each on 1 GPU (array index = replicate number).
-# Usage: sbatch --array=0-7 density_maps.slurm plain_md/7ez0/mMg_tip3p
+# Usage: sbatch --array=0-7 density_maps.slurm plain_md/7ez0/mMg_tip3p [density_maps.py options]
 # All systems: submit_density.sh. Existing outputs are skipped by the script.
 #SBATCH --job-name=density
 #SBATCH -N 1
@@ -22,4 +22,4 @@ source "$PROJECT_DIR/.venv/bin/activate"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 
 cd "$PROJECT_DIR/density"
-python density_maps.py "$1" "${SLURM_ARRAY_TASK_ID}" --n-workers "${SLURM_CPUS_PER_TASK}"
+python density_maps.py "$1" "${SLURM_ARRAY_TASK_ID}" --n-workers "${SLURM_CPUS_PER_TASK}" "${@:2}"

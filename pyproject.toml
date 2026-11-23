@@ -17,7 +17,7 @@ dependencies = [
   "dask",
   "bussilab",
   "pdbfixer @ git+https://github.com/openmm/pdbfixer.git@29fcf15f95f19f92211283fefdd0a086da37d646",
-  "cryomap @ git+ssh://git@github.com/ollyfutur/cryomap.git@f4438f0d8a81506c3b5a84f10b1faa5dea9e3312",
+  "cryomap @ git+ssh://git@github.com/ollyfutur/cryomap.git@dfa1422d5f044d417964202f7a430996d8d61ab2",
   "pyarrow",
   "nbconvert",
   "mrcfile",

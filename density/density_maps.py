@@ -1,10 +1,15 @@
 """
-Forward density maps of one replicate of a simulated system, globally aligned onto the
-reference structure, written to `density/global/<name>` (cryomap `GridEnsemble`).
+Forward density maps of one replicate of a simulated system, aligned onto the reference
+structure, as a cryomap `GridEnsemble`:
+- rigidly (whole RNA), written to `density/global/<name>`;
+- locally, with `--align-radius` and `--out-radius`: each residue is fitted on the RNA atoms
+  within `align-radius` of it and carries the atoms within `out-radius` of it (see cryomap's
+  `ForwardDensity`), written to `density/local/align<A>_out<O>/<name>`.
 
 Examples:
     python density_maps.py plain_md/7ez0/mMg_tip3p 3     # replicate0/rep03
     python density_maps.py replex/7ez0/mMg_tip3p 1       # replicate1 (rep08-15)
+    python density_maps.py plain_md/7ez0/mMg_tip3p 3 --align-radius 10 --out-radius 10
     python density_maps.py replex/7ez0/mMg_tip3p 0 --test 20 --out-dir /tmp/test
 
 Existing outputs are skipped (use --overwrite to recompute).
@@ -19,7 +24,6 @@ from pathlib import Path
 import MDAnalysis as mda
 from cryomap import ForwardDensity, masks, read_mrc
 from cryomap.transformations import unwrap_consecutive, wrap_around
-from MDAnalysis.transformations import fit_rot_trans
 
 from mg_sampling.replex import ParallelReader
 from mg_sampling.structure import (
@@ -70,6 +74,12 @@ def output_name(system, k):
     return "_".join(system.split("/")) + f"_{k}"
 
 
+def default_out_dir(align_radius, out_radius):
+    if align_radius is None:
+        return PROJECT_DIR / "density" / "global"
+    return PROJECT_DIR / "density" / "local" / f"align{align_radius:g}_out{out_radius:g}"
+
+
 def reference():
     """Reference alignment atoms and sparse grid parameters (RNA + solvent shell)."""
     ref_u = mda.Universe(REF_PDB, to_guess=("elements",))
@@ -112,24 +122,29 @@ def compute(system, k, out_dir, args):
     mob_align_light = mob_align.select_atoms("name P")[::5]
     mob_out = u.select_atoms(OUT_SEL)
 
+    # Whole RNA, other atoms wrapped around it; the fit itself is done by ForwardDensity
     u.trajectory.add_transformations(
         unwrap_consecutive(mob_align),
         wrap_around(mob_out, mob_align_light),
-        fit_rot_trans(mob_align, ref_align),
     )
 
     start, stop, step = frames(system, u.trajectory.dt)
     if args.test is not None:
         stop = min(stop, start + args.test * step)
     n_frames = len(range(start, min(stop, len(u.trajectory)), step))
+    mode = "rigid" if args.align_radius is None else f"local (align {args.align_radius:g} Å, out {args.out_radius:g} Å)"
     print(
-        f"[{name}] {n_frames} frames ({start}:{stop}:{step}), n_workers={args.n_workers}",
+        f"[{name}] {n_frames} frames ({start}:{stop}:{step}), {mode} alignment, n_workers={args.n_workers}",
         flush=True,
     )
 
     ana = ForwardDensity(
         mob_out,
         params,
+        align=mob_align,
+        reference=ref_align,
+        align_radius=args.align_radius,
+        out_radius=args.out_radius,
         ensemble=True,
         backend="torch",
         device=DEVICE,
@@ -170,14 +185,23 @@ def main():
     parser.add_argument(
         "--n-workers",
         type=int,
-        default=int(os.environ.get("SLURM_CPUS_PER_TASK", 4)),
+        default=int(os.environ.get("SLURM_CPUS_PER_TASK", "4")),
         help="Number of dask worker processes (default: $SLURM_CPUS_PER_TASK, or 4)",
+    )
+    parser.add_argument(
+        "--align-radius",
+        type=float,
+        help="Local alignment: fit each residue on the RNA atoms within this radius (Å)",
+    )
+    parser.add_argument(
+        "--out-radius",
+        type=float,
+        help="Local alignment: each residue carries the atoms within this radius (Å)",
     )
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=PROJECT_DIR / "density" / "global",
-        help="Output directory (default: density/global)",
+        help="Output directory (default: density/global, or density/local/align<A>_out<O>)",
     )
     parser.add_argument(
         "--overwrite", action="store_true", help="Recompute existing output"
@@ -186,7 +210,10 @@ def main():
         "--test", type=int, metavar="N", help="Only compute the first N frames"
     )
     args = parser.parse_args()
+    if (args.align_radius is None) != (args.out_radius is None):
+        parser.error("--align-radius and --out-radius go together")
 
+    args.out_dir = args.out_dir or default_out_dir(args.align_radius, args.out_radius)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     compute(args.system, args.replicate, args.out_dir, args)
 
