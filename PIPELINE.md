@@ -61,7 +61,7 @@ Out of scope for now: CASP17 (`casp17/`, `07-CASP17`). Deferred: density maps (t
 | PLUMED plugins `LigandExchange.so`, `ReplexBiasValue.so` | external repos `ligandexchange/`, `replex_biasvalue/` (`make`), see README | ✅ (commit/version to pin ❓) |
 | pdbfixer | `pyproject.toml` (git pin) | ✅ |
 | Python package `mg_sampling` | `src/`, `pyproject.toml` | ✅ |
-| cryomap (density maps) | `pyproject.toml`, pinned at commit `f4438f0` of the private repo `github.com/ollyfutur/cryomap` (installed over SSH) | ✅ |
+| cryomap (density maps) | `pyproject.toml`, pinned at commit `84ef5f9` (rigid and local alignment in `ForwardDensity`, fast neighbour search) of the private repo `github.com/ollyfutur/cryomap` (installed over SSH) | ✅ |
 
 ## 1. Force fields
 
@@ -211,7 +211,8 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 | `.../remuxed/0_{MG,NA,CL}_RNA_rdf.xvg` | `replex/compute_rdf.sh`, run in `remuxed/` | 03 | ✅ |
 | `plain_md/7ez0/nMg_tip3p/replicate0/rep00/{MG,NA,CL}_RNA_rdf.xvg` | `plain_md/compute_rdf.sh` | 03 | ✅ |
 | `{replex,plain_md}/.../repNN/ion_counts.parquet` (total and bulk water/ion counts for bulk cutoffs 30–50 Å, every 1 ns, all λ) | `analysis/submit_ion_counts.sh` → `ion_counts.slurm <system>` (array index = replicate) → `ion_counts.py <system> <k> [--radii …]` | 03 (`pipeline.data.load_ion_counts`; cutoff `BULK_RADIUS` = 40 Å, convergence figure) | ⏸ to be run (≈ 15 min per plain MD replica, ≈ 1 h per replex replicate) |
-| `density/global/<sys>_<ff>_<k>` (one cryomap `GridEnsemble` per replicate) | `density/submit_density.sh` → `density_maps.slurm <system>` (array index = replicate) → `density_maps.py <system> <k>` | 05, 06 | ⏸ to be run on the cluster |
+| `density/global/<sys>_<ff>_<k>` (one cryomap `GridEnsemble` per replicate, rigid fit of the RNA) | `density/submit_density.sh` → `density_maps.slurm <system>` (array index = replicate) → `density_maps.py <system> <k>` | 05, 06 | ⏸ running on the cluster (computed with `fit_rot_trans`; the current `ForwardDensity(align=…)` path gives the same maps within 1e-4) |
+| `density/local/align<A>_out<O>/<sys>_<ff>_<k>` (local fit: each residue fitted on the RNA atoms within A Å, carrying the atoms within O Å, copies weighted 1/N) | `density/submit_density.sh --align-radius A --out-radius O` (same scripts) | 05, 06 | ⏸ to be run; radii to choose (suggested 10/10, as the old `density/archive/forward_density_local.py`, which this replaces); ≈ 1.8 s/frame on one core here (0.8 s local fits + 1.0 s density on the local GPU) |
 
 ## 7. Paper notebooks (run order)
 
