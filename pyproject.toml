@@ -17,6 +17,7 @@ dependencies = [
   "dask",
   "bussilab",
   "pdbfixer @ git+https://github.com/openmm/pdbfixer.git@29fcf15f95f19f92211283fefdd0a086da37d646",
+  "openmm>=8.2,<8.4",  # for pdbfixer; 8.4+ wheels need glibc 2.34 (cluster: 2.28)
   "cryomap @ git+ssh://git@github.com/ollyfutur/cryomap.git@3aed484a7e1b463d821aac133e66fc84f6d5432e",
   "pyarrow",
   "nbconvert",
