@@ -3,15 +3,6 @@
 import numpy as np
 
 
-def batched(*sequences, batch_size: int = 1):
-    """
-    Batch iterator on `sequences`.
-    """
-    length = len(sequences[0])
-    for i in range(0, length, batch_size):
-        yield (seq[i : min(i + batch_size, length)] for seq in sequences)
-
-
 def asunique(seq):
     """
     Ensure all elements of `seq` are equal and return the unique element.

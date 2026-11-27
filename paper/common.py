@@ -38,10 +38,6 @@ from mg_sampling.stats import edges_to_range, finitemin, finitemax, block_bootst
 from mg_sampling.replex import demux
 from pipeline.bias import bias_fn
 from mg_sampling.structure import reorder_residue_atoms, unwrap_sequential, wrap_around, wrap_around_atomgroup, standardize_names, check_alignable
-from mg_sampling.density.grid import Grid, SparseGrid
-from mg_sampling.density.forward_density import atomgroup_to_map
-from mg_sampling.density.utils import indices_to_mask, voxels_around
-from mg_sampling.density.plot import plot_map_slice
 
 os.makedirs('figures', exist_ok=True)
 

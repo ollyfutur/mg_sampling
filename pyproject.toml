@@ -17,7 +17,7 @@ dependencies = [
   "dask",
   "bussilab",
   "pdbfixer @ git+https://github.com/openmm/pdbfixer.git@29fcf15f95f19f92211283fefdd0a086da37d646",
-  "cryomap @ git+ssh://git@github.com/ollyfutur/cryomap.git@84ef5f9eaaaceff76286ffdff5667b08e71f48b9",
+  "cryomap @ git+ssh://git@github.com/ollyfutur/cryomap.git@3aed484a7e1b463d821aac133e66fc84f6d5432e",
   "pyarrow",
   "nbconvert",
   "mrcfile",
@@ -37,7 +37,8 @@ description = "Python code for enhanced Mg-RNA dynamics project"
 where = ["src", "."]
 include = ["mg_sampling*", "pipeline*"]
 
+[tool.ruff]
+line-length = 100
+
 [project.scripts]
 ion_motif_analysis = "mg_sampling.motifs:main"
-forward_density = "mg_sampling.density.forward_density:main"
-align = "mg_sampling.density.align:main"

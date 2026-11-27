@@ -61,7 +61,7 @@ Out of scope for now: CASP17 (`casp17/`, `07-CASP17`). Deferred: density maps (t
 | PLUMED plugins `LigandExchange.so`, `ReplexBiasValue.so` | external repos `ligandexchange/`, `replex_biasvalue/` (`make`), see README | ✅ (commit/version to pin ❓) |
 | pdbfixer | `pyproject.toml` (git pin) | ✅ |
 | Python package `mg_sampling` | `src/`, `pyproject.toml` | ✅ |
-| cryomap (density maps) | `pyproject.toml`, pinned at commit `84ef5f9` (rigid and local alignment in `ForwardDensity`, fast neighbour search) of the private repo `github.com/ollyfutur/cryomap` (installed over SSH) | ✅ |
+| cryomap (density maps) | `pyproject.toml`, pinned at commit `3aed484` (rigid and local alignment in `ForwardDensity`, fast neighbour search, `trim` and frame-wise filters on ensembles) of the private repo `github.com/ollyfutur/cryomap` (installed over SSH) | ✅ |
 
 ## 1. Force fields
 
@@ -211,8 +211,10 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 | `.../remuxed/0_{MG,NA,CL}_RNA_rdf.xvg` | `replex/compute_rdf.sh`, run in `remuxed/` | 03 | ✅ |
 | `plain_md/7ez0/nMg_tip3p/replicate0/rep00/{MG,NA,CL}_RNA_rdf.xvg` | `plain_md/compute_rdf.sh` | 03 | ✅ |
 | `{replex,plain_md}/.../repNN/ion_counts.parquet` (total and bulk water/ion counts for bulk cutoffs 30–50 Å, every 1 ns, all λ) | `analysis/submit_ion_counts.sh` → `ion_counts.slurm <system>` (array index = replicate) → `ion_counts.py <system> <k> [--radii …]` | 03 (`pipeline.data.load_ion_counts`; cutoff `BULK_RADIUS` = 40 Å, convergence figure) | ⏸ to be run (≈ 15 min per plain MD replica, ≈ 1 h per replex replicate) |
-| `density/global/<sys>_<ff>_<k>` (one cryomap `GridEnsemble` per replicate, rigid fit of the RNA) | `density/submit_density.sh` → `density_maps.slurm <system>` (array index = replicate) → `density_maps.py <system> <k>` | 05, 06 | ⏸ running on the cluster (computed with `fit_rot_trans`; the current `ForwardDensity(align=…)` path gives the same maps within 1e-4) |
-| `density/local/align<A>_out<O>/<sys>_<ff>_<k>` (local fit: each residue fitted on the RNA atoms within A Å, carrying the atoms within O Å, copies weighted 1/N) | `density/submit_density.sh --align-radius A --out-radius O` (same scripts) | 05, 06 | ⏸ to be run; radii to choose (suggested 10/10, as the old `density/archive/forward_density_local.py`, which this replaces); ≈ 1.8 s/frame on one core here (0.8 s local fits + 1.0 s density on the local GPU) |
+| `density/global/<sys>_<ff>_<k>` (one cryomap `GridEnsemble` per replicate, rigid fit of the RNA) | `density/submit_density.sh` → `density_maps.slurm <system>` (array index = replicate) → `density_maps.py <system> <k>` | `density/block_maps.py` (→ 05), `density/motif_maps.py` (→ 06) | ✅ plain MD (computed with `fit_rot_trans`; the current `ForwardDensity(align=…)` path gives the same maps within 1e-4); ⏸ replex to be recomputed (`--overwrite`), see `ParallelReader.demux` below |
+| `density/local/align<A>_out<O>/<sys>_<ff>_<k>` (local fit: each residue fitted on the RNA atoms within A Å, carrying the atoms within O Å, copies weighted 1/N) | `density/submit_density.sh --align-radius A --out-radius O` (same scripts) | `density/block_maps.py` (→ 05), `density/motif_maps.py` (→ 06) | ✅ plain MD with 10/10, ⏸ replex to be recomputed as above (replaces `density/archive/forward_density_local.py`); ≈ 1.8 s/frame on one core here (0.8 s local fits + 1.0 s density on the local GPU) |
+| `density/blocks/{global,local/align10_out10}/<sys>_<ff>` (mean map of each continuous trajectory: plain MD replica, or replex replica within a replicate; weighted by its number of frames) | `density/block_maps.py` (reads each family once, ≈ 2 min per system) | 05, 06 (`pipeline.density.load_blocks`) | ✅ 16 outputs, 485 MB; ⏸ the 4 replex outputs to be recomputed (`--overwrite`) after their maps |
+| `density/motifs/{global,local/align10_out10}/<sys>_<ff>` (per motif: mean map of the frames where it is occupied, per continuous trajectory, on the voxels within 6 + 5 Å of its atoms in 9CBU; `motifs.parquet`) | `density/motif_maps.py` (reads each family once, ≈ 4 min per plain MD system) | 06 (`pipeline.density.load_motif_maps`) | ✅ plain MD; ⏸ replex after its maps. Motifs with a hydrogen among their inner-sphere ligands (the motif analysis counts any `nucleic` atom within 2.8 Å) are skipped: absent from 9CBU, and never above p = 0.03 |
 
 ## 7. Paper notebooks (run order)
 
@@ -222,8 +224,8 @@ Out of scope for now (inclusion in the paper undecided). No preparation or run s
 | 2 | `02-Kinetics` | kinetics COLVARs (0.0–1.2, triuridine), `bias_params.wsv` | kinetics figures |
 | 3 | `04-Replex` | replex `bias.COLVAR`, `cv.COLVAR`, `bias_index.xvg`, `dist_*` | `figures/replex/*_{system}_{ff}_replicate{rep}.pdf` (all systems and replicates in one run) |
 | 4 | `03-IntronBinding` | `{MG,NA}_motifs.parquet`, `bias.COLVAR.<i>`, `ion_counts.parquet`, structure motif files (7ez0, 9cbu), RDFs | ion-binding figures (time series, site types, bound/outer/bulk, denticity, bulk concentration, ion excess, per-residue occupancy, RDFs) |
-| 5 | `05-DensityMaps` | density maps, EM maps, `9CBU_fixed.pdb`, replex trajectory | `best_tempfactors*.csv`, `cross_correlations.csv`, `cc_p_values.csv`, `tempfactor_scan*.parquet`, map figures |
-| 6 | `06-IndividualMotifAssessment` | `best_tempfactors.csv` (from 05), motif parquets (summarized on the fly), individual maps | `motif_{table,count,recovery}.tex`, `motif_highlight/*`, figures ⚠️ still reads the old `*_summary*.parquet` until revised |
+| 5 | `05-DensityMaps` | block maps, EM maps (half maps resampled in the bootstrap), `9CBU_fixed.pdb` | map sections, B-factor scans, correlation figures (no data files) |
+| 6 | `06-IndividualMotifAssessment` | motif parquets (summarized on the fly) and structure motif files, block and motif maps, half maps, replex trajectories (highlighted motifs only) | `figures/`: `motif_{table,count,recovery}.tex`, `motif_highlight/*`, figures |
 | — | `07-CASP17` | casp17 trajectories | out of scope for now |
 | — | `0X-DNABiasedMD` | biased_md trajectories | per-rep parquet cache |
 
@@ -259,8 +261,8 @@ No figure from `notebooks/` is kept. Only two notebooks produced pipeline inputs
    `archive/` notebooks and figures.
 
 Also removed the `read_exchanges` and `compare_density` entry points (their modules no longer
-exist) and reinstalled the package. The remaining commands are `ion_motif_analysis`,
-`forward_density` and `align`.
+exist) and reinstalled the package. The remaining command is `ion_motif_analysis`
+(`forward_density` and `align` went with `mg_sampling.density`, 2026-11-27).
 
 ## Revising the paper notebooks (in progress)
 
@@ -297,6 +299,25 @@ Fixed on the way:
 - the per-residue figure failed for `7ez0_nomg` (no Mg²⁺);
 - display-only cells were dropped, `tight_layout` calls removed (constrained layout as elsewhere).
 
+`05-DensityMaps` revised (2026-11-26):
+- it reads the block means (`density/block_maps.py`) of the cryomap maps, for both families (global, local 10/10);
+- masks, references, blurring, the B-factor scan and the bootstrapped correlation are in `pipeline.density`, shared with 06;
+- the correlation bootstrap is exact at block level (projections and Gram matrix of the centred blocks), 20× faster than averaging maps per resample;
+- it writes no data files and no exports;
+- about 2½ minutes.
+
+Fixed on the way: the p-values blurred both simulations of a pair with the B-factor of a leftover `sim` from a previous loop. Each simulation now uses its own best B, as for its CC.
+
+Revised again (2026-11-27): the bootstrap also resamples the two half maps (Dirichlet(1, 1) weights; the same draws for all simulations, so the p-values stay paired). Estimates are unchanged; the 99% intervals are 1.6–2.5× wider (plain MD 7ez0, global fit: 0.007 → 0.013 for RNA + Shell, 0.025 → 0.041 for the core phosphate shell). Its replex results are to be rerun after the replex maps (see `ParallelReader.demux`).
+
+`06-IndividualMotifAssessment` revised (2026-11-27):
+- motif maps from the shared per-frame maps (`density/motif_maps.py`) instead of recomputing them from the trajectories in the notebook; "local" is now the per-residue fit of 05 (it was a fit of the RNA atoms within 10 Å of each motif);
+- motif summaries on the fly (`load_occupancy` + `summarize_motifs`), structure motifs from `structures/*/MG_motifs*.parquet`; best B-factors recomputed (core phosphate shell, as before);
+- p_cryo: exact bootstrap over the blocks and the two half maps (`pipeline.density.mixture_cc_bootstrap`), 101 fractions instead of 21; the blur is applied in the box around each motif (cryomap `trim`), unstored voxels counting as zero;
+- outputs in `figures/`; dead and duplicated cells removed, display-only scatter plots saved as figures.
+
+Fixed on the way: `motif_table.tex` had one `X` column too many, and the gray "low CC" highlight missed the μMg-MD + Cryo column.
+
 ## Python packages (reorganized 2026-11-16/17)
 
 Both are installed by `pyproject.toml` (`uv pip install -e .`): `src/mg_sampling` is the
@@ -310,28 +331,44 @@ data layout.
 | `constants` | `RT` at 300 K, `π`, `SWITCH_COEFF` | fit scripts, 01, 02, 04-Replex |
 | `bias` | `bias_fn` (barrier-flattening bias) and its fit constants | `metad/fit_bias.py`, 01 |
 | `systems` | `SYSTEMS`: production window (start, end in ns) and replicates of each simulated system; `replica_dirs`, `replicas`, `in_window`, `is_replex` | `density_maps.py`, `ion_counts.py`, `pipeline.data`, `paper/labels.py` (`simstart`) |
+| `density` | map families, `load_blocks`, `load_motif_maps`, `group_means`, `half_maps`, `reference_maps`, `masks` (9CBU RNA, core, core phosphates, shells), `motif_coords`, `motif_voxels`, `motif_values` (local blur), `blur` (GPU if available), `tempfactor_scan`, `best_tempfactor`, `cc_bootstrap`, `mixture_cc_bootstrap` (exact Gram-matrix bootstraps over blocks and half maps) | `block_maps.py`, `motif_maps.py`, 05, 06 |
 | `data` | `load_motifs(system, ion, columns)`, `load_ion_counts(system)`: per-replica tables of all replicas with `replicate`, `replica`, `state` (λ index); `load_occupancy(system, k, ion, lambda_index)`: `compress_motifs` of each replica in the production window (and at λ); `bias_state` | 03, 06 |
 
 | `mg_sampling` module | Content | Used by |
 |---|---|---|
 | `io` | `read_plumed`, `read_plumed_fes`, `read_wsv`, `to_wsv` | everything |
 | `stats` | `edges_to_range`, `finitemin/max`; `block_bootstrap` (classical or bayesian, blocks from `block_id` or `n_blocks`); `bootstrap`, `bayesian_bootstrap` (until 03/05/06/0X are revised) | notebooks, `motifs` |
-| `replex` | `ParallelReader` (multi-replica trajectories), `ParallelAnalysis`, `demux` | `density_maps.py`, 04-Replex, 05, 07 |
+| `replex` | `ParallelReader` (multi-replica trajectories, `demux` from `bias_index.xvg`), `ParallelAnalysis`, `demux` | `density_maps.py`, 04-Replex, 05, 07 |
 | `structure` | `standardize_names`, `reorder_residue_atoms`, `check_alignable`, `wrap_around(_atomgroup)`, `unwrap_sequential` | `density_maps.py`, `motifs`, 05, 06 |
 | `motifs` | `IonNucleicAnalysis` and the `ion_motif_analysis` command; `compress_motifs` (per-motif occupancy along a trajectory + motif table), `summarize_motifs` (mean occupancy, bayesian block bootstrap over replicas) | motif files, 03, 06, 07, 0X |
-| `tools` | `asunique`, `batched`, `vectorize_dict_lookup` | 06, 07, `density.forward_density` |
-| `density/` | old density pipeline (`grid`, `forward_density`, `utils`, `plot`, `align`; commands `forward_density`, `align`) | current 05, 06 only; remove when they are rewritten on cryomap |
+| `tools` | `asunique`, `vectorize_dict_lookup` | 07 |
 
 Removed: `classes` (`MetadSim` moved into `metad/fit_bias.py`), `ermsd`, `ion_motif_analysis`
 (merged into `motifs`), unused helpers (`read_xvg`, round-trip counters, Kish ratio,
-`read_performance`, `range_to_edges`, `TransformationFromFunction`, `FORCEFIELDS`).
+`read_performance`, `range_to_edges`, `TransformationFromFunction`, `FORCEFIELDS`); `density/`
+(old density pipeline and its commands `forward_density`, `align`) and `tools.batched`, 2026-11-27.
 
 ## Refactoring implications (preliminary)
 
 - **Hand-edited variables** in prepare scripts are set to the final ranges used, so one call
   per step reproduces all systems (done for `structures/7ez0*`, `plain_md`, `replex`).
-- **Density:** switch 05/06 to `density/global` (cryomap); then drop `mg_sampling/density/`
-  and its two commands.
-- **`replex.demux`:** `np.argmin(repindex_times - time)` is always 0, so the "matching time"
-  branch only runs at t = 0; the other branch (last time strictly before) gives the intended
-  result. Simplify (and vectorize with `np.searchsorted`) when touching it.
+- **Density:** done, 05 and 06 use the cryomap maps; `mg_sampling/density/` is removed.
+- **`ParallelReader.demux` (fixed 2026-11-27):** it matched frame times with `np.isclose` (default
+  `rtol=1e-5`, i.e. ≥ 1 ps beyond 100 ns, with exchanges every ps), then took the row before:
+  past 100 ns it used the permutation of 1–2 ps earlier. 25% of the "λ0" frames of the replex
+  density maps came from λ1 (mostly) to λ3. Also, after a restart `bias_index.xvg` repeats the rows
+  from the checkpoint time (replex/7ez0 replicate 1, 135.671 ns): the later rows are kept now.
+  Convention: the state at time t (as in `bias.COLVAR`) is the last row strictly before t; the
+  fixed version matches `bias.COLVAR` for every frame of the 4 replicates. Only the density maps
+  used it (and 07). To redo: `sbatch --array=0-1 density_maps.slurm <replex system> --overwrite`
+  (and with `--align-radius 10 --out-radius 10`), then `block_maps.py --overwrite` and
+  `motif_maps.py` for the two replex systems, then 05 and 06.
+- **`replex.demux`** (module function, used by 04-Replex): `np.argmin(repindex_times - time)` is
+  always 0, so the "matching time" branch only runs at t = 0; the other branch (last row strictly
+  before t) is the right convention. Checked 2026-11-27 by demuxing `bias.COLVAR` itself: every frame
+  lands in the slot of its λ, except one at the restart of replex/7ez0 replicate 1 (it kept the
+  superseded rows); fixed (keeps the rows written after the restart). 04 is off by that one frame
+  in 30001 only. Simplify (and vectorize with `np.searchsorted`) when touching it.
+- **`replex/remux.sh`** (`gmx trjcat -demux`, → RDFs of 03): checked 2026-11-27, the remuxed λ0
+  trajectory has the coordinates of the replica at λ0 in `bias.COLVAR` (48 frames, before and after
+  100 ns).

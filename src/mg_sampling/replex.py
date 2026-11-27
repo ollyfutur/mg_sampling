@@ -1,6 +1,5 @@
 """Replica exchange: multi-replica trajectory reader and demultiplexing of per-replica data."""
 
-import logging
 import numbers
 import warnings
 
@@ -14,8 +13,48 @@ from MDAnalysis.lib.distances import calc_bonds
 from MDAnalysis.lib.util import asiterable, store_init_arguments
 from tqdm import tqdm
 
+TIME_TOL = 1e-3  # ps, tolerance on the times of the replica index file
 
-class ParallelAnalysis(object):
+
+def regular_times(times, name="times"):
+    """`times` (ps) of a regularly spaced series, without the drift of times computed as
+    step × float32(dt) (relative error up to 6e-8, i.e. 0.5 ps at 10 μs): rescaled so
+    that the spacing is a multiple of 1e-6 ps. The drift is measured over the whole
+    series, so it must have no gaps (`ValueError` otherwise)."""
+    times = np.asarray(times, dtype=np.float64)
+    n = len(times)
+    if n < 2:
+        return times
+    dt = (times[-1] - times[0]) / (n - 1)
+    if np.abs(times - np.linspace(times[0], times[-1], n)).max() > dt / 4:
+        raise ValueError(
+            f"{name} could not be interpreted as a linearly spaced timeseries "
+            f"({n} frames, {times[0]} ps to {times[-1]} ps)"
+        )
+    # The drift is proportional to the time since step 0: rescale the times themselves
+    return times * (round(dt, 6) / dt)
+
+
+def _replica_index_table(data, name):
+    # Times (without drift) and permutations of a replica index file (time, then one
+    # column per replica). After a restart, rows from the checkpoint time on are written
+    # again: keep the rows earlier than all the following ones.
+    times = data[:, 0]
+    later = np.minimum.accumulate(times[::-1])[::-1]
+    keep = np.append(times[:-1] < later[1:] - TIME_TOL, True)
+    if not np.all(keep):
+        warnings.warn(f"Found repeated times in {name}. Rows superseded by a restart are dropped.")
+    return regular_times(times[keep], name), data[keep, 1:].astype(int)
+
+
+def _permutation_rows(index_times, times):
+    # Frames are written before the exchange of their step: at time t the permutation
+    # is the last one strictly before t (the first one at t = 0)
+    idx = np.searchsorted(index_times, np.asarray(times) - TIME_TOL, side="left") - 1
+    return np.maximum(idx, 0)
+
+
+class ParallelAnalysis:
     """Performs an analysis on each replica of a ParallelReader trajectory.
     Individual results are accessible with:
         parallel_analysis.results[i]
@@ -30,13 +69,13 @@ class ParallelAnalysis(object):
 
     def __init__(self, analysis_cls, *args, **kwargs):
         if not issubclass(analysis_cls, AnalysisBase):
-            raise ValueError("analysis_cls must be a AnalysisBase object.")
+            raise TypeError("analysis_cls must be a AnalysisBase object.")
 
         # Let the Analysis class determine the trajectory object
         _analysis = analysis_cls(*args, **kwargs)
         trajectory = _analysis._trajectory
         if not isinstance(trajectory, ParallelReader):
-            raise ValueError("ParallelReader trajectory not found.")
+            raise TypeError("ParallelReader trajectory not found.")
 
         self._analyses = []
         for repid in range(trajectory.n_reps):
@@ -46,7 +85,7 @@ class ParallelAnalysis(object):
         self.analysis_cls = analysis_cls
         self.args = args
         self.kwargs = kwargs
-        self._verbose = kwargs["verbose"] if "verbose" in kwargs else False
+        self._verbose = kwargs.get("verbose", False)
 
     def _prepare(self):
         self.results = Results()
@@ -56,9 +95,7 @@ class ParallelAnalysis(object):
         for repid, analysis in enumerate(self._analyses):
             self._trajectory.set_replica(repid)
             if self._verbose:
-                print(
-                    f"Running analysis for replica {repid} ({repid + 1}/{self.n_reps})"
-                )
+                print(f"Running analysis for replica {repid} ({repid + 1}/{self.n_reps})")
             analysis.run(**kwargs)
             self.results[repid] = analysis.results
         return self
@@ -72,15 +109,12 @@ class ParallelAnalysis(object):
             if callable(getattr(self._analyses[0], attr)):
 
                 def _func(*args, **kwargs):
-                    return [
-                        getattr(analysis, attr)(*args, **kwargs)
-                        for analysis in self._analyses
-                    ]
+                    return [getattr(analysis, attr)(*args, **kwargs) for analysis in self._analyses]
 
                 return _func
             else:
                 attrs = [getattr(analysis, attr) for analysis in self._analyses]
-                if all([at is attrs[0] for at in attrs]):
+                if all(at is attrs[0] for at in attrs):
                     return attrs[0]
                 else:
                     return attrs
@@ -122,18 +156,14 @@ class ParallelFrameIterator(base.FrameIteratorBase):
             _inds = []
             for idx in inds:
                 if not isinstance(idx, numbers.Integral):
-                    raise TypeError(
-                        "Frame and replica indices must be integers or slices."
-                    )
+                    raise TypeError("Frame and replica indices must be integers or slices.")
                 idx = self._enforce_bounds(idx, length)
                 _inds.append(idx)
             return tuple(_inds)
 
     def _enforce_bounds(self, idx, length):
         if not (-length <= idx < length):
-            raise IndexError(
-                f"Index {idx} out of bounds for indexable of length {length}"
-            )
+            raise IndexError(f"Index {idx} out of bounds for indexable of length {length}")
         return idx % length
 
     def __iter__(self):
@@ -147,9 +177,7 @@ class ParallelFrameIterator(base.FrameIteratorBase):
 
     def __getitem__(self, inds):
         if isinstance(inds, tuple) and len(inds) == 2:
-            return self.trajectory[
-                self._frame_indices[inds[0]], self._rep_indices[inds[1]]
-            ]
+            return self.trajectory[self._frame_indices[inds[0]], self._rep_indices[inds[1]]]
         elif isinstance(self._frame_indices, numbers.Integral):
             return self.trajectory[self._frame_indices, self._rep_indices[inds]]
         else:
@@ -169,19 +197,14 @@ class ParallelReader(base.ReaderBase):
         replica_index=None,
         **kwargs,
     ):
-        super().__init__(
-            filename="PARALLEL", skip=skip, convert_units=convert_units, **kwargs
-        )
+        super().__init__(filename="PARALLEL", skip=skip, convert_units=convert_units, **kwargs)
         filenames = asiterable(filenames)
 
         kwargs["format"] = fileformat
         self.readers = [
-            core.reader(filename, convert_units=convert_units, **kwargs)
-            for filename in filenames
+            core.reader(filename, convert_units=convert_units, **kwargs) for filename in filenames
         ]
-        self.filenames = np.array(
-            [fn[0] if isinstance(fn, tuple) else fn for fn in filenames]
-        )
+        self.filenames = np.array([fn[0] if isinstance(fn, tuple) else fn for fn in filenames])
         self.skip = skip
         self.n_atoms = self._get_same("n_atoms")
         self.n_frames = self._get_same("n_frames")
@@ -199,9 +222,7 @@ class ParallelReader(base.ReaderBase):
     @staticmethod
     def _format_hint(thing):
         return (
-            not isinstance(thing, np.ndarray)
-            and util.iterable(thing)
-            and not util.isstream(thing)
+            not isinstance(thing, np.ndarray) and util.iterable(thing) and not util.isstream(thing)
         )
 
     def __getstate__(self):
@@ -229,8 +250,7 @@ class ParallelReader(base.ReaderBase):
         if not np.allclose(values, value):
             bad_traj = np.array(self.filenames)[values != value]
             raise ValueError(
-                "The following trajectories do not have the correct {0} "
-                " ({1}):\n{2}".format(attr, value, bad_traj)
+                f"The following trajectories do not have the correct {attr}  ({value}):\n{bad_traj}"
             )
         return value
 
@@ -253,9 +273,7 @@ class ParallelReader(base.ReaderBase):
     def __getitem__(self, inds):
         if isinstance(inds, tuple) and len(inds) == 2:
             frames, repids = inds
-            if isinstance(frames, numbers.Integral) and isinstance(
-                repids, numbers.Integral
-            ):
+            if isinstance(frames, numbers.Integral) and isinstance(repids, numbers.Integral):
                 return self._read_frame(frames, repids)
             else:
                 return ParallelFrameIterator(self.trajectory, frames, repids)
@@ -278,11 +296,7 @@ class ParallelReader(base.ReaderBase):
             i = self._active_replica if self._active_replica is not None else 0
         else:
             frame = ts.frame + 1
-            i = (
-                ts.data["replica_index"]
-                if self._is_demuxed
-                else ts.data["replica_temp"]
-            )
+            i = ts.data["replica_index"] if self._is_demuxed else ts.data["replica_temp"]
         if frame >= self.n_frames:
             raise StopIteration
         self.ts = self._read_frame(frame, i)
@@ -295,9 +309,7 @@ class ParallelReader(base.ReaderBase):
         self._active_replica = i
 
     def add_auxiliary(self, *args, **kwargs):
-        raise NotImplementedError(
-            f"Auxiliary API not supported yet for {self.__class__.__name__}"
-        )
+        raise NotImplementedError(f"Auxiliary API not supported yet for {self.__class__.__name__}")
 
     def demux(self, xvgfile=None):
         """Demultiplexing of the replicas using the replica indices as provided by Gromac's
@@ -312,29 +324,13 @@ class ParallelReader(base.ReaderBase):
                 f"replicas but the current trajectory has {self.n_reps}."
             )
 
-        # Precompute per-frame repids
-        aux_times = np.array([aux_ts.time for aux_ts in aux])
+        aux_data = np.array([aux_ts.data for aux_ts in aux])
+        aux_times, indices = _replica_index_table(aux_data, xvgfile)
         traj_times = np.array([ts.time for ts in self.trajectory])
-        replica_index = []
-        for time in traj_times:
-            # Gromacs saves then does replica exchange, hence at t=1*dt
-            # the replicas have the configuration strictly before t in the
-            # replica_index file, except at t=0 where they are exactly at t.
-            # Case 1: matching times
-            idx = np.argwhere(np.isclose(aux_times, time))
-            if idx.size > 0:
-                idx = max(idx[0][0] - 1, 0)
-            else:
-                idx = np.argwhere(aux_times < time)
-                if idx.size > 0:
-                    idx = idx[-1][0]
-                else:
-                    raise IndexError(
-                        f"No replica indices could be found for time {time}"
-                    )
-            replica_index.append(aux[idx].data[1:].astype(int))
+        if traj_times.min() < aux_times[0] - TIME_TOL:
+            raise IndexError(f"No replica indices at time {traj_times.min()}")
         self._times = traj_times
-        self._replica_index = np.array(replica_index)
+        self._replica_index = indices[_permutation_rows(aux_times, traj_times)]
         self._replica_temp = np.argsort(self._replica_index, axis=1)
         self._is_demuxed = True
 
@@ -398,9 +394,7 @@ class ParallelReader(base.ReaderBase):
         lowest thermodynamic state to the highest, and back."""
 
         if self.replica_index is None:
-            raise NoDataError(
-                "Cannot compute round trip time without replica information."
-            )
+            raise NoDataError("Cannot compute round trip time without replica information.")
 
         round_trips = 0
         times = []
@@ -417,9 +411,7 @@ class ParallelReader(base.ReaderBase):
                 up = True
 
         if round_trips == 0:
-            warnings.warn(
-                "Cannot estimate round trip time because no round trip was completed."
-            )
+            warnings.warn("Cannot estimate round trip time because no round trip was completed.")
             return None, None
         else:
             if round_trips < 5:
@@ -446,76 +438,34 @@ class ParallelReader(base.ReaderBase):
         self._apply("close")
 
     def __repr__(self):
-        return "<{cls} with {nreaders} trajectories of {nframes} frames of {natoms} atoms>".format(
-            cls=self.__class__.__name__,
-            nreaders=self.n_reps,
-            nframes=self.n_frames,
-            natoms=self.n_atoms,
-        )
+        return f"<{self.__class__.__name__} with {self.n_reps} trajectories of {self.n_frames} frames of {self.n_atoms} atoms>"
 
 
-def demux(
-    data_list, data_times=None, repindex_file="replica_index.xvg", rtol=1e-8, atol=1e-6
-):
+def demux(data_list, data_times=None, repindex_file="replica_index.xvg"):
     """
     From an array-like (n_rep, n_frames, n_features)
     outputs demuxed trajectories (n_rep, n_frames_processed, n_features)
-    using the replice index file `repindex_file`.
+    using the replica index file `repindex_file`.
 
-    If `data_times` is `None` the first feature of the first replica is used.
-
-    The parameter `rtol` and `atol` are the relative and absolute tolerances to consider `data_times`
-    and times in `repindex_file` equal.
+    If `data_times` is `None` the first feature of the first replica is used. Both series
+    of times must be regularly spaced; they are freed from float32 drift (`regular_times`).
     """
-    repindex = np.loadtxt(repindex_file)
-    repindex_times, repindex = repindex[:, 0], repindex[:, 1:]
-    unique, unique_indices, counts = np.unique(
-        repindex_times, return_index=True, return_counts=True
-    )
-    if np.any(counts > 1):
-        logging.warning(
-            f"Found repeated times in {repindex_file}. Duplicates will be dropped, make sure they are consistent!"
-        )
-    repindex_times = unique
-    repindex = repindex[unique_indices]
+    repindex_times, repindex = _replica_index_table(np.loadtxt(repindex_file), repindex_file)
     n_reps = repindex.shape[1]
 
     data_arr = np.array(data_list)
 
     if data_times is None:
         data_times = data_arr[0, :, 0]
-
-    dt = min(np.diff(repindex_times).mean(), np.diff(data_times).mean())
+    data_times = regular_times(data_times, "data times")
 
     if data_arr.shape[0] != n_reps:
-        raise ValueError(
-            f"Number of replicas in {repindex_file} doesn't match `data_list`"
+        raise ValueError(f"Number of replicas in {repindex_file} doesn't match `data_list`")
+
+    n_frames = np.searchsorted(data_times, repindex_times[-1] + TIME_TOL, side="right")
+    if n_frames < len(data_times):
+        warnings.warn(
+            f"Data times go above replica_index times. Data will be truncated after {repindex_times[-1]}."
         )
-
-    # Gromacs saves then does replica exchange, hence at t=1*dt
-    # the replicas have the configuration strictly before t in the
-    # replica_index file, except at t=0 where they are exactly at t.
-
-    max_time = np.max(repindex_times)
-
-    demuxed_data = []
-    for itime, time in enumerate(data_times):
-        if time > max_time:
-            logging.warning(
-                f"Data times go above replica_index times. Data will be truncated after {max_time}."
-            )
-            break
-        idx = np.argmin(repindex_times - time)
-        if (
-            np.abs(repindex_times[idx] - time) < rtol * time + atol
-        ):  # Case 1: matching `time`
-            idx = max(
-                idx - 1, 0
-            )  # Take one step before `time` in `replica_index` (or 0)
-        else:  # Case 2: not matching `time`
-            idx = np.argwhere(repindex_times < time)
-            idx = idx[-1][0]  # Take first preceding `time`
-        reptemp = np.argsort(repindex[idx]).astype(int)
-        demuxed_data.append(data_arr[reptemp, itime, :])
-
-    return np.array(demuxed_data).swapaxes(0, 1)
+    reptemp = np.argsort(repindex[_permutation_rows(repindex_times, data_times[:n_frames])], axis=1)
+    return data_arr[reptemp, np.arange(n_frames)[:, None]].swapaxes(0, 1)

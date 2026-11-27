@@ -20,7 +20,7 @@ def standardize_names(ag: AtomGroup | Universe):
     """
     ag = ag.atoms
     ag.names = [
-        STANDARD_NAMES[name] if name in STANDARD_NAMES else name for name in ag.names
+        STANDARD_NAMES.get(name, name) for name in ag.names
     ]
 
 

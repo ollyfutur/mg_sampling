@@ -12,9 +12,7 @@ N_REPLICAS = 8  # replicas per replex replicate
 class System:
     start: float  # ns, end of equilibration
     end: float  # ns, end of the run
-    n_replicates: (
-        int  # replex: replicates of N_REPLICAS replicas; plain MD: independent runs
-    )
+    n_replicates: int  # replex: replicates of N_REPLICAS replicas; plain MD: independent runs
 
 
 SYSTEMS = {
